@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+
+from app.config import Settings, get_settings
+from app.core.errors import GraphServiceError
+
+
+class McpClient:
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
+
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._settings.internal_service_token}"}
+        url = f"{self._settings.mcp_simple_tool_url.rstrip('/')}/tools/{tool_name}"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url, json={"arguments": arguments}, headers=headers
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("MCP server is unreachable.") from exc
+        if response.status_code >= 400:
+            raise GraphServiceError("MCP tool call failed.")
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {"result": payload}
+
+
+async def call_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return await McpClient().call_tool(tool_name, arguments)

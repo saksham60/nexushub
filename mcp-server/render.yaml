@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: nexushub-mcp-server
+    env: python
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: uvicorn nexushub_mcp.asgi:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: NEXUSHUB_MODE
+        value: mock
+      - key: MCP_TRANSPORT
+        value: streamable-http
+      - key: MCP_HTTP_PATH
+        value: /mcp
+      - key: LOG_LEVEL
+        value: info
+      - key: PYTHON_VERSION
+        value: 3.12.4

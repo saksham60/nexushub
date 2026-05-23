@@ -1,0 +1,388 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from typing import Any, Literal
+
+from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
+from nexushub_mcp.mock import mock_mail
+from nexushub_mcp.server.context import NexusHubRuntime
+from nexushub_mcp.tools.common import ensure_user_id
+from nexushub_mcp.utils.logger import get_logger, log_tool_call
+from nexushub_mcp.utils.response import approval_required, ok
+
+Priority = Literal["all", "high", "medium", "low"]
+Tone = Literal["professional", "concise", "friendly"]
+
+REPLY_TERMS = (
+    "please",
+    "can you",
+    "approve",
+    "review",
+    "urgent",
+    "need your input",
+    "waiting for your response",
+)
+
+logger = get_logger(__name__)
+
+
+def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
+    @mcp.tool(description="Find emails that likely require the user to reply.")
+    async def mail_find_needs_reply(
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        days: int = 7,
+        maxResults: int = 10,
+        priority: Priority = "all",
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "mail_find_needs_reply",
+            {
+                "days": days,
+                "maxResults": maxResults,
+                "priority": priority,
+                "hasUserId": bool(user_id),
+            },
+        )
+        days = _clamp(days, 1, 60)
+        max_results = _clamp(maxResults, 1, 50)
+        if runtime.settings.mode == "mock":
+            return ok(
+                "mock",
+                mock_mail.find_needs_reply(days=days, max_results=max_results, priority=priority),
+            )
+        missing = ensure_user_id(runtime.settings.mode, user_id)
+        if missing:
+            return missing
+        try:
+            data = await runtime.backend_client.get_recent_mail(
+                user_id=user_id or "",
+                workspace_id=workspace_id,
+                top=max_results * 3,
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+        messages = list((data.get("data") or data).get("value", []))
+        items = [_classify_reply_need(message) for message in messages]
+        filtered = [
+            item for item in items if item and (priority == "all" or item["urgency"] == priority)
+        ]
+        filtered = filtered[:max_results]
+        groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for item in filtered:
+            groups[item["urgency"]].append(item)
+        return ok(
+            "microsoft_graph",
+            {
+                "windowDays": days,
+                "count": len(filtered),
+                "groups": [
+                    {"urgency": urgency, "count": len(group_items), "items": group_items}
+                    for urgency, group_items in groups.items()
+                ],
+            },
+        )
+
+    @mcp.tool(description="Find emails where the user may need to approve or review something.")
+    async def mail_find_awaiting_approval(
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        days: int = 14,
+        maxResults: int = 10,
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "mail_find_awaiting_approval",
+            {"days": days, "maxResults": maxResults, "hasUserId": bool(user_id)},
+        )
+        days = _clamp(days, 1, 90)
+        max_results = _clamp(maxResults, 1, 50)
+        if runtime.settings.mode == "mock":
+            return ok("mock", mock_mail.find_awaiting_approval(days=days, max_results=max_results))
+        missing = ensure_user_id(runtime.settings.mode, user_id)
+        if missing:
+            return missing
+        try:
+            data = await runtime.backend_client.get_recent_mail(
+                user_id=user_id or "",
+                workspace_id=workspace_id,
+                top=max_results * 4,
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+        items = []
+        for message in list((data.get("data") or data).get("value", [])):
+            text = f"{message.get('subject', '')} {message.get('bodyPreview', '')}".lower()
+            terms = [
+                term
+                for term in (
+                    "approve",
+                    "approval",
+                    "review",
+                    "sign-off",
+                    "sign off",
+                    "contract",
+                    "budget",
+                    "invoice",
+                )
+                if term in text
+            ]
+            if terms:
+                items.append(
+                    {
+                        "messageId": message.get("id"),
+                        "threadId": message.get("conversationId"),
+                        "sender": _sender_name(message),
+                        "subject": message.get("subject"),
+                        "preview": message.get("bodyPreview"),
+                        "receivedAt": message.get("receivedDateTime"),
+                        "matchedTerms": terms[:4],
+                        "reason": f"Contains approval/review language: {', '.join(terms[:3])}",
+                    }
+                )
+        return ok(
+            "microsoft_graph",
+            {"windowDays": days, "count": len(items[:max_results]), "items": items[:max_results]},
+        )
+
+    @mcp.tool(description="Summarize a selected email thread.")
+    async def mail_summarize_thread(
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        threadId: str | None = None,
+        messageId: str | None = None,
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "mail_summarize_thread",
+            {
+                "hasThreadId": bool(threadId),
+                "hasMessageId": bool(messageId),
+                "hasUserId": bool(user_id),
+            },
+        )
+        if runtime.settings.mode == "mock":
+            return ok("mock", mock_mail.summarize_thread(thread_id=threadId, message_id=messageId))
+        missing = ensure_user_id(runtime.settings.mode, user_id)
+        if missing:
+            return missing
+        try:
+            data = await runtime.backend_client.get_recent_mail(
+                user_id=user_id or "", workspace_id=workspace_id, top=20
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+        messages = list((data.get("data") or data).get("value", []))
+        if messageId:
+            messages = [
+                message for message in messages if message.get("id") == messageId
+            ] or messages[:1]
+        elif threadId:
+            messages = [
+                message for message in messages if message.get("conversationId") == threadId
+            ] or messages[:5]
+        else:
+            messages = messages[:5]
+        previews = [
+            str(message.get("bodyPreview") or "")
+            for message in messages
+            if message.get("bodyPreview")
+        ]
+        return ok(
+            "microsoft_graph",
+            {
+                "threadId": threadId or (messages[0].get("conversationId") if messages else None),
+                "messageCount": len(messages),
+                "summaryBullets": [
+                    f"Thread topic: {messages[0].get('subject') if messages else 'Unknown'}.",
+                    f"Recent senders: {', '.join(dict.fromkeys(_sender_name(message) for message in messages[:5]))}.",
+                    f"Key context: {previews[0][:240] if previews else 'No preview available.'}",
+                ],
+                "requiredAction": "Review the thread and reply if a decision or input is requested.",
+                "suggestedNextSteps": [
+                    "Open the newest message before taking action.",
+                    "Confirm owner, decision, and deadline.",
+                    "Use mail_create_draft_reply to prepare an approval-gated draft.",
+                ],
+            },
+        )
+
+    @mcp.tool(description="Create a draft reply preview. This never sends mail in the MVP.")
+    async def mail_create_draft_reply(
+        to: str,
+        subject: str,
+        context: str,
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        tone: Tone = "professional",
+        intent: str | None = None,
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "mail_create_draft_reply",
+            {
+                "toProvided": bool(to),
+                "tone": tone,
+                "contextLength": len(context),
+                "hasUserId": bool(user_id),
+            },
+        )
+        preview = _draft_reply(to=to, subject=subject, context=context, tone=tone, intent=intent)
+        payload = {
+            "to": to,
+            "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
+            "body": preview,
+            "tone": tone,
+            "intent": intent,
+        }
+        if runtime.settings.mode == "graph":
+            missing = ensure_user_id(runtime.settings.mode, user_id)
+            if missing:
+                return missing
+            try:
+                created = await runtime.backend_client.create_approval(
+                    user_id=user_id or "",
+                    workspace_id=workspace_id,
+                    tool_name="mail_create_draft_reply",
+                    action_type="mail.create_draft_reply",
+                    payload=payload,
+                    preview={"title": f"Draft reply to {to}", "body": preview},
+                )
+            except BackendInternalClientError as exc:
+                return exc.to_mcp_response()
+            approval_id = str(
+                (created.get("data") or created).get("approval_id")
+                or (created.get("data") or created).get("id")
+            )
+            return approval_required(
+                "microsoft_graph",
+                action_type="mail.create_draft_reply",
+                title=f"Draft reply to {to}",
+                preview=preview,
+                payload=payload,
+                approval_id=approval_id,
+            )
+
+        record = runtime.approval_store.create(
+            action_type="mail.create_draft_reply",
+            title=f"Draft reply to {to}",
+            payload=payload,
+            preview=preview,
+        )
+        return approval_required(
+            "mock",
+            action_type="mail.create_draft_reply",
+            title=record.title,
+            preview=preview,
+            payload=payload,
+            approval_id=record.approval_id,
+        )
+
+    @mcp.tool(description="Mark selected mail as read. This write action requires approval first.")
+    async def mail_mark_as_read(
+        messageIds: list[str],
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "mail_mark_as_read",
+            {"messageCount": len(messageIds), "hasUserId": bool(user_id)},
+        )
+        payload = {"messageIds": messageIds}
+        preview_text = f"Mark {len(messageIds)} selected message(s) as read."
+        if runtime.settings.mode == "graph":
+            missing = ensure_user_id(runtime.settings.mode, user_id)
+            if missing:
+                return missing
+            try:
+                created = await runtime.backend_client.create_approval(
+                    user_id=user_id or "",
+                    workspace_id=workspace_id,
+                    tool_name="mail_mark_as_read",
+                    action_type="mail.mark_as_read",
+                    payload=payload,
+                    preview={"title": preview_text, "messageIds": messageIds},
+                )
+            except BackendInternalClientError as exc:
+                return exc.to_mcp_response()
+            approval_id = str(
+                (created.get("data") or created).get("approval_id")
+                or (created.get("data") or created).get("id")
+            )
+            return approval_required(
+                "microsoft_graph",
+                action_type="mail.mark_as_read",
+                title=preview_text,
+                preview=preview_text,
+                payload=payload,
+                approval_id=approval_id,
+            )
+
+        record = runtime.approval_store.create(
+            action_type="mail.mark_as_read",
+            title=preview_text,
+            payload=payload,
+            preview=preview_text,
+        )
+        return approval_required(
+            "mock",
+            action_type="mail.mark_as_read",
+            title=record.title,
+            preview=record.preview or "",
+            payload=payload,
+            approval_id=record.approval_id,
+        )
+
+
+def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
+    text = f"{message.get('subject', '')} {message.get('bodyPreview', '')}".lower()
+    score = 0
+    reasons: list[str] = []
+    if not message.get("isRead", True):
+        score += 2
+        reasons.append("unread")
+    matched = [term for term in REPLY_TERMS if term in text]
+    if matched:
+        score += min(3, len(matched))
+        reasons.append(f"matched language: {', '.join(matched[:3])}")
+    if "?" in text:
+        score += 1
+        reasons.append("contains a question")
+    if message.get("importance") == "high":
+        score += 2
+        reasons.append("marked high importance")
+    if score < 2:
+        return None
+    urgency = "high" if score >= 5 else "medium" if score >= 3 else "low"
+    return {
+        "messageId": message.get("id"),
+        "threadId": message.get("conversationId"),
+        "sender": _sender_name(message),
+        "subject": message.get("subject"),
+        "preview": message.get("bodyPreview"),
+        "receivedAt": message.get("receivedDateTime"),
+        "reason": ", ".join(reasons),
+        "urgency": urgency,
+    }
+
+
+def _sender_name(message: dict[str, Any]) -> str:
+    from_block = message.get("from") or {}
+    email = from_block.get("emailAddress") or {}
+    return str(email.get("name") or email.get("address") or "Unknown sender")
+
+
+def _draft_reply(*, to: str, subject: str, context: str, tone: Tone, intent: str | None) -> str:
+    greeting = f"Hi {to.split('@')[0].split('.')[0].title()}," if "@" in to else f"Hi {to},"
+    intent_line = intent or "sharing my response based on the current context"
+    if tone == "concise":
+        return f"{greeting}\n\nI reviewed this and am {intent_line}. Key context: {context[:280]}\n\nPlease confirm if you need anything else.\n\nBest,"
+    if tone == "friendly":
+        return f"{greeting}\n\nThanks for the note. I reviewed the details and am {intent_line}. The main point I am working from is: {context[:320]}\n\nHappy to adjust if there is new context.\n\nBest,"
+    return f"{greeting}\n\nI reviewed the thread regarding {subject}. Based on the available context, I am {intent_line}.\n\nContext considered: {context[:420]}\n\nPlease let me know if you would like me to revise this before next steps are taken.\n\nBest,"
+
+
+def _clamp(value: int, lower: int, upper: int) -> int:
+    return max(lower, min(value, upper))

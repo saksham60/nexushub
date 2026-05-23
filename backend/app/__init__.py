@@ -1,0 +1,1 @@
+"""NexusHub backend application."""

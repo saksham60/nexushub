@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class UserWorkspaceRequest(BaseModel):
+    user_id: str
+    workspace_id: str | None = None
+
+
+class RecentMailRequest(UserWorkspaceRequest):
+    top: int = Field(default=10, ge=1, le=50)
+
+
+class RecentFilesRequest(UserWorkspaceRequest):
+    top: int = Field(default=10, ge=1, le=50)
+
+
+class ApprovalCreateRequest(BaseModel):
+    user_id: str
+    workspace_id: str | None = None
+    tool_name: str
+    action_type: str
+    payload: dict[str, Any]
+    preview: dict[str, Any]
+
+
+class ApprovalExecuteRequest(BaseModel):
+    user_id: str
+    approval_id: str
+    approved: bool
+
+
+class ApprovalListRequest(BaseModel):
+    user_id: str
+    workspace_id: str | None = None
+    max_results: int = Field(default=10, ge=1, le=50)
+
+
+class AgentChatRequest(BaseModel):
+    user_id: str
+    workspace_id: str | None = None
+    message: str

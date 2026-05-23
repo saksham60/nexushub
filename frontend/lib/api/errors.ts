@@ -1,0 +1,45 @@
+export type ApiStatus = "ok" | "error";
+
+export type ApiErrorResponse = {
+  status: "error";
+  error: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  request_id?: string;
+};
+
+export class ApiError extends Error {
+  public code: string;
+  public details?: any;
+  public request_id?: string;
+
+  constructor(response: ApiErrorResponse) {
+    super(response.error.message);
+    this.name = "ApiError";
+    this.code = response.error.code;
+    this.details = response.error.details;
+    this.request_id = response.request_id;
+  }
+}
+
+export function getFriendlyErrorMessage(error: any): string {
+  if (error instanceof ApiError) {
+    switch (error.code) {
+      case "MICROSOFT_NOT_CONNECTED":
+        return "Connect Microsoft 365 to unlock Outlook, Calendar, and OneDrive data.";
+      case "NOT_IMPLEMENTED":
+        return "This module is prepared but not enabled yet.";
+      case "BACKEND_UNAVAILABLE":
+        return "NexusHub backend is not reachable. Start the backend on port 3001.";
+      case "TOKEN_REFRESH_FAILED":
+        return "Microsoft connection expired. Please reconnect Microsoft 365.";
+      case "UNAUTHENTICATED":
+        return "Please sign in.";
+      default:
+        return error.message || "An unexpected error occurred.";
+    }
+  }
+  return "An unexpected error occurred.";
+}
