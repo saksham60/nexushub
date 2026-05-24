@@ -2,11 +2,40 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import get_settings
+from app.core.logging import get_logger
 from app.services.mcp_client import call_tool
+
+logger = get_logger(__name__)
 
 
 class AgentOrchestrator:
     async def chat(
+        self, *, user_id: str, workspace_id: str | None, message: str
+    ) -> dict[str, Any]:
+        settings = get_settings()
+        if settings.agent_mode == "langgraph":
+            try:
+                from app.services.langgraph_agent import LangGraphAgent
+
+                return await LangGraphAgent().chat(
+                    user_id=user_id, workspace_id=workspace_id, message=message
+                )
+            except Exception as exc:
+                logger.warning(
+                    "LangGraph agent failed; using rule-based fallback.",
+                    extra={
+                        "metadata": {
+                            "errorType": type(exc).__name__,
+                            "messageLength": len(message),
+                        }
+                    },
+                )
+        return await self._rule_based_chat(
+            user_id=user_id, workspace_id=workspace_id, message=message
+        )
+
+    async def _rule_based_chat(
         self, *, user_id: str, workspace_id: str | None, message: str
     ) -> dict[str, Any]:
         tool_name = self._route(message)
@@ -23,7 +52,12 @@ class AgentOrchestrator:
                 "connect_url": "/auth/microsoft/start",
                 "message": "Please connect Microsoft 365 first.",
             }
-        return {"type": "agent_response", "tool_used": tool_name, "data": tool_result}
+        return {
+            "type": "agent_response",
+            "tool_used": tool_name,
+            "data": tool_result,
+            "agent": {"mode": "rule_based"},
+        }
 
     def _route(self, message: str) -> str:
         lowered = message.lower()

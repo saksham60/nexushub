@@ -140,6 +140,21 @@ If Microsoft is not connected, the backend returns:
 }
 ```
 
+## Azure LLM Routing
+
+The backend can use LangGraph plus Azure AI Foundry to choose MCP tools. Keep the MCP server unchanged; the backend still calls MCP through `MCP_SIMPLE_TOOL_URL`.
+
+Backend env:
+
+```env
+AGENT_MODE=langgraph
+AZURE_AI_FOUNDRY_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>
+AZURE_AI_FOUNDRY_API_KEY=<secret>
+AZURE_AI_FOUNDRY_MODEL=<deployed-model-or-deployment-name>
+```
+
+If Azure returns `DeploymentNotFound`, the key and endpoint are reachable but `AZURE_AI_FOUNDRY_MODEL` does not match a deployed model in that Foundry project.
+
 ## Supabase
 
 Run `backend/app/db/schema.sql` in Supabase SQL editor before graph mode testing.

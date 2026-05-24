@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     internal_service_token: str = ""
     mcp_server_url: str = "http://mcp-server:8010/mcp"
     mcp_simple_tool_url: str = "http://mcp-server:8010"
+    agent_mode: str = "rule_based"
+    azure_ai_foundry_endpoint: str = ""
+    azure_ai_foundry_api_key: str = ""
+    azure_ai_foundry_model: str = ""
     log_level: str = "info"
 
     model_config = SettingsConfigDict(
