@@ -1,4 +1,5 @@
 const USER_ID_KEY = "nexushub:user_id";
+let memoryUserId: string | null = null;
 
 function fallbackUuid() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -9,18 +10,33 @@ function fallbackUuid() {
 }
 
 export function getStoredUserId() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(USER_ID_KEY);
+  if (typeof window === "undefined") return memoryUserId;
+  try {
+    return window.localStorage.getItem(USER_ID_KEY) || memoryUserId;
+  } catch {
+    return memoryUserId;
+  }
 }
 
 export function setStoredUserId(userId: string) {
-  if (typeof window === "undefined" || !userId.trim()) return;
-  window.localStorage.setItem(USER_ID_KEY, userId);
+  if (!userId.trim()) return;
+  memoryUserId = userId;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(USER_ID_KEY, userId);
+  } catch {
+    // Some embedded/private browser modes disable localStorage. Memory fallback is enough for MVP.
+  }
 }
 
 export function clearStoredUserId() {
+  memoryUserId = null;
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(USER_ID_KEY);
+  try {
+    window.localStorage.removeItem(USER_ID_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
 }
 
 export function ensureUserId() {
