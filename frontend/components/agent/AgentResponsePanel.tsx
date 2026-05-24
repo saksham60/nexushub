@@ -35,11 +35,25 @@ export function AgentResponsePanel({ response }: { response: AgentChatResponse |
         <AlertTitle className="text-blue-800">Approval Required</AlertTitle>
         <AlertDescription className="text-blue-700 mt-2 flex flex-col gap-3 items-start">
           {response.message}
-          <Link href="/approvals">
-            <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white">
-              Review Approval
-            </Button>
-          </Link>
+          {(response.approvalId || response.approval?.id) && (
+            <Link href="/approvals">
+              <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white">
+                Review Approval
+              </Button>
+            </Link>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (response.type === "clarification") {
+    return (
+      <Alert className="border-amber-200 bg-amber-50">
+        <AlertCircle className="h-4 w-4 text-amber-600" />
+        <AlertTitle className="text-amber-800">Clarification Needed</AlertTitle>
+        <AlertDescription className="text-amber-700 mt-2">
+          {response.message}
         </AlertDescription>
       </Alert>
     );

@@ -20,11 +20,13 @@ class Settings(BaseSettings):
     internal_service_token: str = ""
     mcp_server_url: str = "http://mcp-server:8010/mcp"
     mcp_simple_tool_url: str = "http://mcp-server:8010"
-    agent_mode: str = "rule_based"
+    agent_mode: str = "semantic"
     llm_provider: str = "openai"
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1"
     openai_base_url: str = "https://api.openai.com/v1"
+    document_upload_dir: str = "uploads/documents"
+    document_max_upload_bytes: int = 10 * 1024 * 1024
     log_level: str = "info"
 
     model_config = SettingsConfigDict(

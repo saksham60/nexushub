@@ -75,3 +75,16 @@ class MailDraftReplyRequest(UserWorkspaceRequest):
     userIntent: str = "draft a concise executive reply"
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class DocumentAnalyzeRequest(BaseModel):
+    documentId: str
+    analysisType: str = "executive_brief"
+    instructions: str = ""
+
+
+class DocumentReportRequest(BaseModel):
+    documentId: str
+    reportTitle: str
+    instructions: str = ""
+    format: str = "executive_summary"

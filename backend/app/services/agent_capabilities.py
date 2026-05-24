@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.mcp_client import get_mcp_health
+from app.services.tool_catalog_service import ToolCatalogService
 
 DEFAULT_CAPABILITY_MESSAGE = (
     "Hi. I can help with your Microsoft 365 workspace: mail that needs reply, "
@@ -11,16 +11,15 @@ DEFAULT_CAPABILITY_MESSAGE = (
 
 
 def is_capability_question(message: str) -> bool:
-    normalized = message.lower()
+    normalized = message.lower().strip()
     if "tool" in normalized and any(
         phrase in normalized
         for phrase in ("how many", "available", "list", "what tools", "which tools")
     ):
         return True
-    return any(
-        phrase in normalized
-        for phrase in ("what can you do", "help", "capabilities", "available actions")
-    )
+    if normalized in {"help", "what can you do", "what can you do?", "capabilities"}:
+        return True
+    return any(phrase in normalized for phrase in ("available actions", "your capabilities"))
 
 
 async def build_direct_response(message: str) -> dict[str, Any]:
@@ -28,7 +27,7 @@ async def build_direct_response(message: str) -> dict[str, Any]:
         return {"message": DEFAULT_CAPABILITY_MESSAGE}
 
     try:
-        health = await get_mcp_health()
+        catalog = await ToolCatalogService().get_catalog()
     except Exception as exc:
         return {
             "message": (
@@ -37,26 +36,25 @@ async def build_direct_response(message: str) -> dict[str, Any]:
             )
         }
 
-    tools = (health.get("tools") or {}) if isinstance(health, dict) else {}
-    categories = tools.get("categories") if isinstance(tools, dict) else []
-    if not isinstance(categories, list):
-        categories = []
-    count = tools.get("count") if isinstance(tools, dict) else None
-    if not isinstance(count, int):
-        count = sum(
-            len(category.get("tools") or [])
-            for category in categories
-            if isinstance(category, dict)
-        )
-
-    category_summaries = []
-    for category in categories:
-        if not isinstance(category, dict):
+    tools = catalog.get("tools") if isinstance(catalog, dict) else []
+    if not isinstance(tools, list):
+        tools = []
+    count = int(catalog.get("count") or len(tools)) if isinstance(catalog, dict) else len(tools)
+    grouped: dict[str, list[str]] = {}
+    for tool in tools:
+        if not isinstance(tool, dict):
             continue
-        category_tools = category.get("tools") or []
-        if not isinstance(category_tools, list):
-            category_tools = []
-        category_summaries.append(f"{category.get('name', 'Tools')} ({len(category_tools)})")
+        category = str(tool.get("category") or "tools")
+        name = str(tool.get("name") or "")
+        if name:
+            grouped.setdefault(category, []).append(name)
+    categories = [
+        {"name": category, "tools": sorted(names)}
+        for category, names in sorted(grouped.items())
+    ]
+    category_summaries = [
+        f"{category['name']} ({len(category['tools'])})" for category in categories
+    ]
 
     if not category_summaries:
         return {"message": f"NexusHub currently has {count} MCP tools available."}

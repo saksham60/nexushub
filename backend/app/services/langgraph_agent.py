@@ -24,8 +24,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "calendar_find_focus_blocks": "Suggest focus blocks from the calendar.",
     "calendar_prepare_meeting_brief": "Prepare a brief for an upcoming meeting.",
     "docs_list_recent_files": "List recent OneDrive or SharePoint files.",
-    "docs_analyze_uploaded_file": "Analyze an uploaded or mock file by filename.",
-    "docs_build_report": "Build a report outline from a document by filename.",
+    "docs_analyze_uploaded_file": "Analyze an uploaded file by document id.",
+    "docs_build_report": "Build a report from an uploaded document id.",
     "teams_get_urgent_mentions": "Find urgent Teams mentions. Graph mode may return not implemented.",
     "teams_get_meeting_summaries": "Return recent Teams meeting summaries. Graph mode may return fallback.",
     "teams_extract_action_items": "Extract action items from supplied Teams/chat text.",
@@ -120,7 +120,7 @@ class LangGraphAgent:
             }
         except Exception as exc:
             logger.warning(
-                "LLM tool selection failed; using rule-based fallback.",
+                "LLM tool selection failed; using direct safe fallback.",
                 extra={
                     "metadata": {
                         "errorType": type(exc).__name__,
@@ -128,12 +128,11 @@ class LangGraphAgent:
                     }
                 },
             )
-            selected_tool = self._fallback_tool(message)
             return {
-                "selected_tool": selected_tool,
-                "tool_args": {},
-                "routing_source": "rule_based_fallback",
-                "agent_reason": "OpenAI routing failed, so NexusHub used the local fallback router.",
+                "selected_tool": "direct_response",
+                "tool_args": {"message": "NexusHub semantic routing is unavailable. Please try again."},
+                "routing_source": "safe_fallback",
+                "agent_reason": "OpenAI routing failed; no business tool was guessed.",
             }
 
     async def _call_selected_tool(self, state: AgentState) -> dict[str, Any]:
@@ -214,7 +213,7 @@ Rules:
     def _normalize_tool(self, tool_name: str) -> str:
         if tool_name in TOOL_DESCRIPTIONS:
             return tool_name
-        return "mail_find_needs_reply"
+        return "auth_get_status"
 
     def _sanitize_args(
         self, tool_name: str, raw_args: Any, original_message: str
@@ -242,15 +241,7 @@ Rules:
         lowered = message.lower()
         if _is_greeting_or_smalltalk(lowered) or is_capability_question(lowered):
             return "direct_response"
-        if "approval" in lowered:
-            return "approval_list_pending"
-        if "agenda" in lowered or "calendar" in lowered or "today" in lowered:
-            return "calendar_get_today_agenda"
-        if "file" in lowered or "document" in lowered or "onedrive" in lowered:
-            return "docs_list_recent_files"
-        if "team" in lowered or "mention" in lowered:
-            return "teams_get_urgent_mentions"
-        return "mail_find_needs_reply"
+        return "auth_get_status"
 
 
 def _is_greeting_or_smalltalk(message: str) -> bool:

@@ -39,3 +39,11 @@ class LLMUnavailableError(NexusHubError):
 
 class InsufficientEmailContextError(NexusHubError):
     code = "INSUFFICIENT_EMAIL_CONTEXT"
+
+
+class DocumentParsingError(NexusHubError):
+    code = "DOCUMENT_PARSING_ERROR"
+
+
+class UnsupportedDocumentError(NexusHubError):
+    code = "UNSUPPORTED_DOCUMENT"

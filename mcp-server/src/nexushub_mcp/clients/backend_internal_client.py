@@ -142,6 +142,36 @@ class BackendInternalClient:
             {"user_id": user_id, "workspace_id": workspace_id, "max_results": max_results},
         )
 
+    async def analyze_document(
+        self, *, document_id: str, analysis_type: str, instructions: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/internal/documents/analyze",
+            {
+                "documentId": document_id,
+                "analysisType": analysis_type,
+                "instructions": instructions,
+            },
+        )
+
+    async def create_document_report(
+        self,
+        *,
+        document_id: str,
+        report_title: str,
+        instructions: str,
+        report_format: str,
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/internal/documents/reports",
+            {
+                "documentId": document_id,
+                "reportTitle": report_title,
+                "instructions": instructions,
+                "format": report_format,
+            },
+        )
+
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         if not self._settings.internal_service_token:
             raise BackendInternalClientError(

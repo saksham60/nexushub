@@ -2,51 +2,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config import get_settings
 from app.core.logging import get_logger
 from app.services.agent_capabilities import (
-    DEFAULT_CAPABILITY_MESSAGE,
     build_direct_response,
-    is_capability_question,
 )
 from app.services.mcp_client import call_tool
+from app.services.semantic_agent_router import SemanticAgentRouter
 
 logger = get_logger(__name__)
-
-DIRECT_RESPONSE_MESSAGE = DEFAULT_CAPABILITY_MESSAGE
 
 
 class AgentOrchestrator:
     async def chat(
         self, *, user_id: str, workspace_id: str | None, message: str
     ) -> dict[str, Any]:
-        settings = get_settings()
-        if settings.agent_mode == "langgraph":
-            try:
-                from app.services.langgraph_agent import LangGraphAgent
-
-                return await LangGraphAgent().chat(
-                    user_id=user_id, workspace_id=workspace_id, message=message
-                )
-            except Exception as exc:
-                logger.warning(
-                    "LangGraph agent failed; using rule-based fallback.",
-                    extra={
-                        "metadata": {
-                            "errorType": type(exc).__name__,
-                            "messageLength": len(message),
-                        }
-                    },
-                )
-        return await self._rule_based_chat(
+        decision = await SemanticAgentRouter().route(
             user_id=user_id, workspace_id=workspace_id, message=message
         )
-
-    async def _rule_based_chat(
-        self, *, user_id: str, workspace_id: str | None, message: str
-    ) -> dict[str, Any]:
-        tool_name = self._route(message)
-        if tool_name == "direct_response":
+        if decision.response_type == "direct_response":
             direct_data = await build_direct_response(message)
             return {
                 "type": "agent_response",
@@ -56,9 +29,68 @@ class AgentOrchestrator:
                     "source": "agent",
                     "data": direct_data,
                 },
-                "agent": {"mode": "rule_based"},
+                "agent": {
+                    "mode": "semantic",
+                    "routing_source": "direct_catalog_response",
+                    "reason": decision.reason,
+                    "confidence": decision.confidence,
+                },
             }
-        arguments = {"user_id": user_id, "workspace_id": workspace_id}
+        if decision.response_type == "clarification":
+            return {
+                "type": "clarification",
+                "message": decision.clarification_question
+                or "Please clarify what you want NexusHub to do.",
+                "toolUsed": decision.tool_name,
+                "confidence": decision.confidence,
+                "agent": {
+                    "mode": "semantic",
+                    "routing_source": "openai_semantic_router",
+                    "reason": decision.reason,
+                },
+            }
+        if decision.response_type == "error":
+            return {
+                "type": "error",
+                "error": {
+                    "code": decision.error_code or "ROUTER_ERROR",
+                    "message": decision.error_message or "NexusHub could not route the command.",
+                },
+                "agent": {
+                    "mode": "semantic",
+                    "routing_source": "openai_semantic_router",
+                    "reason": decision.reason,
+                },
+            }
+
+        tool_name = decision.tool_name
+        if not tool_name:
+            return {
+                "type": "clarification",
+                "message": "I could not match that request to an available NexusHub tool.",
+                "confidence": decision.confidence,
+            }
+        if decision.requires_approval:
+            return {
+                "type": "approval_required",
+                "message": "This action requires explicit approval before NexusHub can execute it.",
+                "toolUsed": tool_name,
+                "confidence": decision.confidence,
+                "requiresApproval": True,
+                "approvalId": None,
+                "data": {"arguments": decision.arguments or {}},
+                "agent": {
+                    "mode": "semantic",
+                    "routing_source": "openai_semantic_router",
+                    "reason": decision.reason,
+                },
+            }
+
+        arguments = {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            **(decision.arguments or {}),
+        }
         result = await call_tool(tool_name, arguments)
         tool_result = result.get("result") or result
         if (
@@ -75,33 +107,10 @@ class AgentOrchestrator:
             "type": "agent_response",
             "tool_used": tool_name,
             "data": tool_result,
-            "agent": {"mode": "rule_based"},
-        }
-
-    def _route(self, message: str) -> str:
-        lowered = message.lower()
-        if self._is_greeting_or_smalltalk(lowered) or is_capability_question(lowered):
-            return "direct_response"
-        if "approval" in lowered:
-            return "approval_list_pending"
-        if "agenda" in lowered or "calendar" in lowered or "today" in lowered:
-            return "calendar_get_today_agenda"
-        if "file" in lowered or "document" in lowered or "onedrive" in lowered:
-            return "docs_list_recent_files"
-        if "email" in lowered or "mail" in lowered or "reply" in lowered:
-            return "mail_find_needs_reply"
-        return "mail_find_needs_reply"
-
-    def _is_greeting_or_smalltalk(self, message: str) -> bool:
-        normalized = message.strip().lower().strip(".!?")
-        return normalized in {
-            "hi",
-            "hello",
-            "hey",
-            "hii",
-            "yo",
-            "thanks",
-            "thank you",
-            "what can you do",
-            "help",
+            "agent": {
+                "mode": "semantic",
+                "routing_source": "openai_semantic_router",
+                "reason": decision.reason,
+                "confidence": decision.confidence,
+            },
         }

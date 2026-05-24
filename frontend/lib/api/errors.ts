@@ -33,9 +33,13 @@ export function getFriendlyErrorMessage(error: any): string {
       case "consent_required":
         return "Mail.ReadWrite permission is missing. Reconnect Microsoft 365 and approve Mail.ReadWrite.";
       case "LLM_UNAVAILABLE":
-        return "Could not generate draft.";
+        return "The LLM service is unavailable. Please try again.";
       case "INSUFFICIENT_EMAIL_CONTEXT":
         return "This email does not have enough context for a safe draft.";
+      case "DOCUMENT_PARSING_ERROR":
+        return error.message || "NexusHub could not extract readable text from this file.";
+      case "UNSUPPORTED_DOCUMENT":
+        return error.message || "Unsupported file type. Upload a PDF, DOCX, XLSX, CSV, or TXT file.";
       case "graph_error":
         return "Microsoft Graph is not responding. Your in-app draft was kept.";
       case "mcp_unreachable":

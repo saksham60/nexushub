@@ -40,7 +40,7 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             return exc.to_mcp_response()
         return ok("microsoft_graph", data.get("data") or data)
 
-    @mcp.tool(description="Analyze an uploaded file or mock workbook.")
+    @mcp.tool(description="Analyze an uploaded file by document id.")
     async def docs_analyze_uploaded_file(
         fileName: str,
         analysisGoal: str | None = None,
@@ -50,15 +50,25 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             "docs_analyze_uploaded_file",
             {"fileName": Path(fileName).name, "hasAnalysisGoal": bool(analysisGoal)},
         )
-        metadata = _safe_local_file_metadata(runtime, fileName)
-        return ok(
-            "mock",
-            mock_docs.analyze_file(
-                file_name=Path(fileName).name,
-                analysis_goal=analysisGoal,
-                physical_metadata=metadata,
-            ),
-        )
+        if runtime.settings.mode == "mock":
+            metadata = _safe_local_file_metadata(runtime, fileName)
+            return ok(
+                "mock",
+                mock_docs.analyze_file(
+                    file_name=Path(fileName).name,
+                    analysis_goal=analysisGoal,
+                    physical_metadata=metadata,
+                ),
+            )
+        try:
+            data = await runtime.backend_client.analyze_document(
+                document_id=fileName,
+                analysis_type="executive_brief",
+                instructions=analysisGoal or "",
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+        return ok("nexushub_backend", data)
 
     @mcp.tool(description="Build a report outline from document analysis.")
     async def docs_build_report(
@@ -71,12 +81,23 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             "docs_build_report",
             {"fileName": Path(fileName).name, "reportType": reportType, "audience": audience},
         )
-        return ok(
-            "mock",
-            mock_docs.build_report(
-                file_name=Path(fileName).name, report_type=reportType, audience=audience
-            ),
-        )
+        if runtime.settings.mode == "mock":
+            return ok(
+                "mock",
+                mock_docs.build_report(
+                    file_name=Path(fileName).name, report_type=reportType, audience=audience
+                ),
+            )
+        try:
+            data = await runtime.backend_client.create_document_report(
+                document_id=fileName,
+                report_title=f"{Path(fileName).stem} report",
+                instructions=f"Audience: {audience}",
+                report_format=reportType,
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+        return ok("nexushub_backend", data)
 
 
 def _safe_local_file_metadata(runtime: NexusHubRuntime, file_name: str) -> dict[str, Any] | None:

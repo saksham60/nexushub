@@ -4,13 +4,14 @@ import { RecentFile } from "../docs/types";
 import { ApprovalAction } from "../approvals/types";
 
 export type AgentChatResponse =
-  | { type: "agent_response"; tool_used: "direct_response"; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> } }
+  | { type: "agent_response"; tool_used: string; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> } }
   | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string } }
   | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string } }
   | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string } }
   | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] } }
   | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string }
-  | { type: "approval_required"; approval: ApprovalAction; message: string; draftBody?: string; approvalId?: string }
+  | { type: "approval_required"; approval?: ApprovalAction; message: string; draftBody?: string; approvalId?: string | null; toolUsed?: string | null; confidence?: number }
+  | { type: "clarification"; message: string; toolUsed?: string | null; confidence?: number }
   | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string }
   | { type: "error"; error: { code: string; message: string } };
 
@@ -21,6 +22,15 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
 
   if (raw.type === "connect_required" || raw.type === "approval_required" || raw.type === "not_implemented" || raw.type === "error") {
     return raw as AgentChatResponse;
+  }
+
+  if (raw.type === "clarification") {
+    return {
+      type: "clarification",
+      message: raw.message || "Please clarify what you want NexusHub to do.",
+      toolUsed: raw.toolUsed,
+      confidence: raw.confidence,
+    };
   }
 
   if (raw.type !== "agent_response") {
@@ -179,10 +189,20 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
   }
 
   return {
-    type: "error",
-    error: {
-      code: "unsupported_tool_response",
-      message: `No frontend normalizer is configured for ${toolName}.`,
+    type: "agent_response",
+    tool_used: String(toolName || "tool_result"),
+    data: {
+      kind: "message",
+      message: genericToolMessage(toolName, data),
     },
   };
+}
+
+function genericToolMessage(toolName: string, data: any): string {
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  if (typeof data?.summary === "string" && data.summary.trim()) return data.summary;
+  if (typeof data?.report === "string" && data.report.trim()) return data.report;
+  if (typeof data?.title === "string" && data.title.trim()) return data.title;
+  if (typeof data?.count === "number") return `${toolName} returned ${data.count} result(s).`;
+  return `${toolName || "NexusHub"} completed.`;
 }

@@ -8,10 +8,12 @@ from app.api import (
     approvals,
     auth_microsoft,
     command_center,
+    documents,
     health,
     internal_approvals,
     internal_graph,
     mail,
+    tools,
 )
 from app.config import get_settings
 from app.core.logging import configure_logging
@@ -33,6 +35,9 @@ app.include_router(health.router)
 app.include_router(auth_microsoft.router)
 app.include_router(agent.router)
 app.include_router(command_center.router)
+app.include_router(documents.router)
+app.include_router(documents.internal_router)
+app.include_router(tools.router)
 app.include_router(mail.router)
 app.include_router(mail.router, prefix="/api")
 app.include_router(mail.internal_router)
