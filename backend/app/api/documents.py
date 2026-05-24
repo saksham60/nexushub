@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.core.errors import (
     DocumentParsingError,
+    FeatureDisabledError,
     LLMUnavailableError,
     NexusHubError,
     UnsupportedDocumentError,
@@ -77,6 +78,8 @@ def _http_error(exc: NexusHubError) -> HTTPException:
     elif isinstance(exc, DocumentParsingError):
         status_code = 422
     elif isinstance(exc, LLMUnavailableError):
+        status_code = 503
+    elif isinstance(exc, FeatureDisabledError):
         status_code = 503
     return HTTPException(
         status_code=status_code,

@@ -16,12 +16,26 @@ from app.config import Settings, get_settings
 from app.core.errors import (
     ConfigurationError,
     DocumentParsingError,
+    FeatureDisabledError,
     LLMUnavailableError,
     UnsupportedDocumentError,
 )
 from app.services.openai_llm_service import OpenAILLMService
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv", ".txt"}
+EXECUTABLE_EXTENSIONS = {
+    ".bat",
+    ".cmd",
+    ".com",
+    ".dll",
+    ".exe",
+    ".js",
+    ".msi",
+    ".ps1",
+    ".scr",
+    ".sh",
+    ".vbs",
+}
 ALLOWED_MIME_PREFIXES = {"text/"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
@@ -51,6 +65,7 @@ class DocumentService:
         self._llm = llm or OpenAILLMService()
 
     async def upload(self, *, file: UploadFile, user_id: str | None = None) -> dict[str, Any]:
+        self._ensure_enabled()
         filename = Path(file.filename or "document").name
         extension = Path(filename).suffix.lower()
         content_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -59,6 +74,7 @@ class DocumentService:
         document_id = str(uuid.uuid4())
         created_at = datetime.now(UTC).isoformat()
         upload_dir = self._upload_dir()
+        self._cleanup_expired_uploads(upload_dir)
         target = upload_dir / f"{document_id}{extension}"
 
         size = 0
@@ -80,6 +96,7 @@ class DocumentService:
             "extension": extension,
             "createdAt": created_at,
             "userId": user_id,
+            "retentionHours": self._settings.document_retention_hours,
         }
         self._metadata_path(document_id).write_text(json.dumps(metadata), encoding="utf-8")
         return {
@@ -94,6 +111,7 @@ class DocumentService:
     async def analyze(
         self, *, document_id: str, analysis_type: str, instructions: str
     ) -> dict[str, Any]:
+        self._ensure_enabled()
         extracted = self.extract(document_id)
         try:
             result = await self._llm.complete_json(
@@ -117,6 +135,7 @@ class DocumentService:
             "actionItems": _string_list(result.get("actionItems")),
             "confidence": _confidence(result.get("confidence")),
             "sourceStats": extracted.stats,
+            "llmStatus": "ok",
         }
 
     async def report(
@@ -127,6 +146,7 @@ class DocumentService:
         instructions: str,
         report_format: str,
     ) -> dict[str, Any]:
+        self._ensure_enabled()
         extracted = self.extract(document_id)
         try:
             result = await self._llm.complete_json(
@@ -156,9 +176,12 @@ class DocumentService:
         return {
             "documentId": document_id,
             "reportId": str(uuid.uuid4()),
+            "filename": extracted.metadata["filename"],
             "title": str(result.get("title") or report_title),
             "report": str(result.get("report") or ""),
             "sections": normalized_sections,
+            "sourceStats": extracted.stats,
+            "llmStatus": "ok",
             "createdAt": created_at,
         }
 
@@ -185,9 +208,19 @@ class DocumentService:
         text = _strip_html(text).strip()
         if not text:
             raise DocumentParsingError("No readable text could be extracted from this document.")
-        return ExtractedDocument(text=text[:60_000], stats={**stats, "charactersExtracted": len(text)}, metadata=metadata)
+        return ExtractedDocument(
+            text=text[:60_000],
+            stats={
+                **stats,
+                "charactersExtracted": len(text),
+                "truncatedForLlm": len(text) > 60_000,
+            },
+            metadata=metadata,
+        )
 
     def _validate_file(self, *, filename: str, extension: str, content_type: str) -> None:
+        if extension in EXECUTABLE_EXTENSIONS:
+            raise UnsupportedDocumentError(f"Executable files are not supported: {filename}.")
         if extension not in ALLOWED_EXTENSIONS:
             raise UnsupportedDocumentError(f"Unsupported file type for {filename}.")
         if not (
@@ -218,6 +251,38 @@ class DocumentService:
             raise DocumentParsingError("Uploaded document metadata is invalid.")
         return payload
 
+    def _ensure_enabled(self) -> None:
+        if not self._settings.enable_real_document_analysis:
+            raise FeatureDisabledError(
+                "Real document analysis is disabled. Set ENABLE_REAL_DOCUMENT_ANALYSIS=true to enable it."
+            )
+
+    def _cleanup_expired_uploads(self, upload_dir: Path) -> None:
+        retention_hours = self._settings.document_retention_hours
+        if retention_hours <= 0:
+            return
+        now = datetime.now(UTC)
+        for metadata_path in upload_dir.glob("*.json"):
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if not isinstance(metadata, dict):
+                    continue
+                created_at = _parse_datetime(str(metadata.get("createdAt") or ""))
+                age_hours = (now - created_at).total_seconds() / 3600
+                if age_hours <= retention_hours:
+                    continue
+                extension = str(metadata.get("extension") or "")
+                document_id = metadata_path.stem
+                candidates = [metadata_path]
+                if extension:
+                    candidates.append(self._document_path(document_id, extension))
+                for candidate in candidates:
+                    resolved = candidate.resolve()
+                    if resolved.is_relative_to(upload_dir.resolve()):
+                        resolved.unlink(missing_ok=True)
+            except Exception:
+                continue
+
 
 def _extract_pdf(path: Path) -> tuple[str, dict[str, Any]]:
     try:
@@ -229,7 +294,7 @@ def _extract_pdf(path: Path) -> tuple[str, dict[str, Any]]:
         texts = [page.extract_text() or "" for page in reader.pages]
     except Exception as exc:
         raise DocumentParsingError("Could not parse PDF document.") from exc
-    return "\n\n".join(texts), {"pages": len(reader.pages), "sheets": 0}
+    return "\n\n".join(texts), {"pages": len(reader.pages), "sheets": 0, "parser": "pypdf"}
 
 
 def _extract_docx(path: Path) -> tuple[str, dict[str, Any]]:
@@ -249,7 +314,7 @@ def _extract_docx(path: Path) -> tuple[str, dict[str, Any]]:
         ]
     except Exception as exc:
         raise DocumentParsingError("Could not parse DOCX document.") from exc
-    return "\n".join([*paragraphs, *table_cells]), {"pages": None, "sheets": 0}
+    return "\n".join([*paragraphs, *table_cells]), {"pages": None, "sheets": 0, "parser": "python-docx"}
 
 
 def _extract_xlsx(path: Path) -> tuple[str, dict[str, Any]]:
@@ -268,7 +333,7 @@ def _extract_xlsx(path: Path) -> tuple[str, dict[str, Any]]:
                     lines.append(" | ".join(values))
     except Exception as exc:
         raise DocumentParsingError("Could not parse XLSX document.") from exc
-    return "\n".join(lines), {"pages": None, "sheets": len(workbook.worksheets)}
+    return "\n".join(lines), {"pages": None, "sheets": len(workbook.worksheets), "parser": "openpyxl"}
 
 
 def _extract_csv(path: Path) -> tuple[str, dict[str, Any]]:
@@ -280,14 +345,14 @@ def _extract_csv(path: Path) -> tuple[str, dict[str, Any]]:
             rows = list(csv.reader(handle))
     except Exception as exc:
         raise DocumentParsingError("Could not parse CSV document.") from exc
-    return "\n".join(" | ".join(row) for row in rows), {"pages": None, "sheets": 1, "rows": len(rows)}
+    return "\n".join(" | ".join(row) for row in rows), {"pages": None, "sheets": 1, "rows": len(rows), "parser": "csv"}
 
 
 def _extract_txt(path: Path) -> tuple[str, dict[str, Any]]:
     try:
-        return path.read_text(encoding="utf-8"), {"pages": None, "sheets": 0}
+        return path.read_text(encoding="utf-8"), {"pages": None, "sheets": 0, "parser": "text"}
     except UnicodeDecodeError:
-        return path.read_text(encoding="latin-1"), {"pages": None, "sheets": 0}
+        return path.read_text(encoding="latin-1"), {"pages": None, "sheets": 0, "parser": "text"}
     except Exception as exc:
         raise DocumentParsingError("Could not parse TXT document.") from exc
 
@@ -306,6 +371,13 @@ def _strip_html(value: str) -> str:
     parser.feed(value)
     stripped = " ".join(part.strip() for part in parser.parts if part.strip())
     return stripped or value
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _analysis_system_prompt() -> str:

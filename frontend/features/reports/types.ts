@@ -9,10 +9,13 @@ export type DocumentAnalysisResponse = {
   confidence: number;
   sourceStats: {
     charactersExtracted: number;
+    parser?: string;
+    truncatedForLlm?: boolean;
     pages?: number | null;
     sheets?: number | null;
     rows?: number | null;
   };
+  llmStatus: "ok" | "error" | string;
 };
 
 export type DocumentReportSection = {
@@ -23,9 +26,19 @@ export type DocumentReportSection = {
 export type ReportResponse = {
   documentId: string;
   reportId: string;
+  filename: string;
   title: string;
   report: string;
   sections: DocumentReportSection[];
+  sourceStats: {
+    charactersExtracted: number;
+    parser?: string;
+    truncatedForLlm?: boolean;
+    pages?: number | null;
+    sheets?: number | null;
+    rows?: number | null;
+  };
+  llmStatus: "ok" | "error" | string;
   createdAt: string;
 };
 

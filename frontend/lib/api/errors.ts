@@ -40,6 +40,8 @@ export function getFriendlyErrorMessage(error: any): string {
         return error.message || "NexusHub could not extract readable text from this file.";
       case "UNSUPPORTED_DOCUMENT":
         return error.message || "Unsupported file type. Upload a PDF, DOCX, XLSX, CSV, or TXT file.";
+      case "FEATURE_DISABLED":
+        return error.message || "This NexusHub feature is disabled.";
       case "graph_error":
         return "Microsoft Graph is not responding. Your in-app draft was kept.";
       case "mcp_unreachable":

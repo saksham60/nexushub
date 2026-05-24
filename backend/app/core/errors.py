@@ -33,6 +33,10 @@ class ConfigurationError(NexusHubError):
     code = "configuration_error"
 
 
+class FeatureDisabledError(NexusHubError):
+    code = "FEATURE_DISABLED"
+
+
 class LLMUnavailableError(NexusHubError):
     code = "LLM_UNAVAILABLE"
 

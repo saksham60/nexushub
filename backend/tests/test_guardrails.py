@@ -1,0 +1,217 @@
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any
+
+from app.config import Settings
+from app.core.errors import (
+    DocumentParsingError,
+    FeatureDisabledError,
+    LLMUnavailableError,
+    UnsupportedDocumentError,
+)
+from app.services.document_service import DocumentService
+from app.services.semantic_agent_router import SemanticAgentRouter
+
+
+class SuccessfulLLM:
+    async def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        return {
+            "title": "Real Report",
+            "report": "Report based on extracted source content.",
+            "sections": [{"heading": "Summary", "content": "Source-backed summary."}],
+            "summary": "Source-backed summary.",
+            "keyPoints": ["Uses uploaded text"],
+            "risks": [],
+            "actionItems": [],
+            "confidence": 0.82,
+        }
+
+
+class FailingLLM:
+    async def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        raise RuntimeError("llm down")
+
+
+class LowConfidenceLLM:
+    async def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        return {
+            "intent": "ambiguous",
+            "toolName": "mail_find_needs_reply",
+            "arguments": {},
+            "confidence": 0.2,
+            "reason": "The request is ambiguous.",
+            "requiresClarification": False,
+            "clarificationQuestion": None,
+        }
+
+
+class UnknownToolLLM:
+    async def complete_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        return {
+            "intent": "unknown",
+            "toolName": "not_a_real_tool",
+            "arguments": {},
+            "confidence": 0.95,
+            "reason": "The request asks for an unavailable tool.",
+            "requiresClarification": False,
+            "clarificationQuestion": None,
+        }
+
+
+class ToolCatalog:
+    async def get_catalog(self) -> dict[str, Any]:
+        return {
+            "tools": [
+                {
+                    "name": "mail_find_needs_reply",
+                    "category": "mail",
+                    "description": "Find mail needing reply.",
+                    "inputSchema": {},
+                    "requiresApproval": False,
+                }
+            ],
+            "count": 1,
+            "categories": ["mail"],
+        }
+
+
+class FailingCatalog:
+    async def get_catalog(self) -> dict[str, Any]:
+        raise RuntimeError("mcp unavailable")
+
+
+class DocumentGuardrailTests(unittest.IsolatedAsyncioTestCase):
+    def test_unsupported_file_type_is_rejected(self) -> None:
+        service = DocumentService(settings=Settings())
+        with self.assertRaises(UnsupportedDocumentError):
+            service._validate_file(
+                filename="payload.exe",
+                extension=".exe",
+                content_type="application/x-msdownload",
+            )
+
+    def test_empty_text_extraction_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            _write_document(tempdir=tempdir, document_id="empty", filename="empty.txt", content="")
+            service = DocumentService(settings=Settings(document_upload_dir=tempdir))
+            with self.assertRaises(DocumentParsingError):
+                service.extract("empty")
+
+    async def test_llm_unavailable_does_not_fake_analysis(self) -> None:
+        os.environ["NEXT_PUBLIC_DEMO_MODE"] = "false"
+        with tempfile.TemporaryDirectory() as tempdir:
+            _write_document(
+                tempdir=tempdir,
+                document_id="real",
+                filename="real.txt",
+                content="The renewal risk needs review by Friday.",
+            )
+            service = DocumentService(
+                settings=Settings(document_upload_dir=tempdir),
+                llm=FailingLLM(),
+            )
+            with self.assertRaises(LLMUnavailableError):
+                await service.analyze(
+                    document_id="real",
+                    analysis_type="executive_brief",
+                    instructions="Summarize",
+                )
+
+    async def test_feature_flag_disabled_returns_real_error(self) -> None:
+        service = DocumentService(
+            settings=Settings(enable_real_document_analysis=False),
+            llm=SuccessfulLLM(),
+        )
+        with self.assertRaises(FeatureDisabledError):
+            await service.report(
+                document_id="any",
+                report_title="Report",
+                instructions="",
+                report_format="executive_summary",
+            )
+
+    async def test_report_includes_debug_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            _write_document(
+                tempdir=tempdir,
+                document_id="brief",
+                filename="brief.txt",
+                content="Revenue increased 12%. Action item: review renewal risk.",
+            )
+            service = DocumentService(
+                settings=Settings(document_upload_dir=tempdir),
+                llm=SuccessfulLLM(),
+            )
+            report = await service.report(
+                document_id="brief",
+                report_title="Brief",
+                instructions="",
+                report_format="executive_summary",
+            )
+            self.assertEqual(report["filename"], "brief.txt")
+            self.assertEqual(report["llmStatus"], "ok")
+            self.assertEqual(report["sourceStats"]["parser"], "text")
+            self.assertGreater(report["sourceStats"]["charactersExtracted"], 0)
+            self.assertIn("createdAt", report)
+
+
+class SemanticRouterGuardrailTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mcp_catalog_unavailable_returns_error(self) -> None:
+        decision = await SemanticAgentRouter(
+            llm=LowConfidenceLLM(),
+            catalog_service=FailingCatalog(),
+        ).route(user_id="u", workspace_id=None, message="Find my work")
+        self.assertEqual(decision.response_type, "error")
+        self.assertEqual(decision.error_code, "TOOL_CATALOG_UNAVAILABLE")
+
+    async def test_ambiguous_command_asks_clarification(self) -> None:
+        decision = await SemanticAgentRouter(
+            llm=LowConfidenceLLM(),
+            catalog_service=ToolCatalog(),
+        ).route(user_id="u", workspace_id=None, message="Can you handle this?")
+        self.assertEqual(decision.response_type, "clarification")
+
+    async def test_unknown_tool_request_asks_clarification(self) -> None:
+        decision = await SemanticAgentRouter(
+            llm=UnknownToolLLM(),
+            catalog_service=ToolCatalog(),
+        ).route(user_id="u", workspace_id=None, message="Run a payroll reconciliation")
+        self.assertEqual(decision.response_type, "clarification")
+
+    async def test_semantic_router_flag_disabled_returns_error(self) -> None:
+        decision = await SemanticAgentRouter(
+            llm=LowConfidenceLLM(),
+            catalog_service=ToolCatalog(),
+            settings=Settings(enable_semantic_router=False),
+        ).route(user_id="u", workspace_id=None, message="Find emails I need to answer")
+        self.assertEqual(decision.response_type, "error")
+        self.assertEqual(decision.error_code, "FEATURE_DISABLED")
+
+
+def _write_document(*, tempdir: str, document_id: str, filename: str, content: str) -> None:
+    upload_dir = Path(tempdir)
+    extension = Path(filename).suffix
+    (upload_dir / f"{document_id}{extension}").write_text(content, encoding="utf-8")
+    (upload_dir / f"{document_id}.json").write_text(
+        json.dumps(
+            {
+                "documentId": document_id,
+                "filename": filename,
+                "contentType": "text/plain",
+                "sizeBytes": len(content.encode("utf-8")),
+                "extension": extension,
+                "createdAt": "2026-05-24T00:00:00+00:00",
+                "userId": "test",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()

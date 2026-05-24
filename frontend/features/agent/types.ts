@@ -3,17 +3,25 @@ import { CalendarEvent } from "../calendar/types";
 import { RecentFile } from "../docs/types";
 import { ApprovalAction } from "../approvals/types";
 
+export type AgentRoutingDebug = {
+  selectedTool?: string | null;
+  confidence?: number;
+  reason?: string;
+  clarificationNeeded?: boolean;
+  approvalRequired?: boolean;
+};
+
 export type AgentChatResponse =
-  | { type: "agent_response"; tool_used: string; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> } }
-  | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string } }
-  | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string } }
-  | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string } }
-  | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] } }
-  | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string }
-  | { type: "approval_required"; approval?: ApprovalAction; message: string; draftBody?: string; approvalId?: string | null; toolUsed?: string | null; confidence?: number }
-  | { type: "clarification"; message: string; toolUsed?: string | null; confidence?: number }
-  | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string }
-  | { type: "error"; error: { code: string; message: string } };
+  | { type: "agent_response"; tool_used: string; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> }; routing?: AgentRoutingDebug }
+  | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string }; routing?: AgentRoutingDebug }
+  | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string }; routing?: AgentRoutingDebug }
+  | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string }; routing?: AgentRoutingDebug }
+  | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] }; routing?: AgentRoutingDebug }
+  | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string; routing?: AgentRoutingDebug }
+  | { type: "approval_required"; approval?: ApprovalAction; message: string; draftBody?: string; approvalId?: string | null; toolUsed?: string | null; confidence?: number; routing?: AgentRoutingDebug }
+  | { type: "clarification"; message: string; toolUsed?: string | null; confidence?: number; routing?: AgentRoutingDebug }
+  | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string; routing?: AgentRoutingDebug }
+  | { type: "error"; error: { code: string; message: string }; routing?: AgentRoutingDebug };
 
 export function normalizeAgentResponse(raw: any): AgentChatResponse {
   if (!raw || typeof raw !== "object") {
@@ -21,7 +29,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
   }
 
   if (raw.type === "connect_required" || raw.type === "approval_required" || raw.type === "not_implemented" || raw.type === "error") {
-    return raw as AgentChatResponse;
+    return { ...raw, routing: normalizeRouting(raw) } as AgentChatResponse;
   }
 
   if (raw.type === "clarification") {
@@ -30,6 +38,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
       message: raw.message || "Please clarify what you want NexusHub to do.",
       toolUsed: raw.toolUsed,
       confidence: raw.confidence,
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -44,6 +53,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
       provider: "microsoft",
       connect_url: toolResult.connect_url || "/auth/microsoft/start",
       message: toolResult.message || "Please connect Microsoft 365 first.",
+      routing: normalizeRouting(raw),
     };
   }
   if (toolResult.status === "not_implemented") {
@@ -51,6 +61,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
       type: "not_implemented",
       module: "teams",
       message: toolResult.message || "This tool is not implemented yet.",
+      routing: normalizeRouting(raw),
     };
   }
   if (toolResult.ok === false) {
@@ -60,6 +71,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         code: toolResult.error?.code || "tool_error",
         message: toolResult.error?.message || toolResult.message || "The tool call failed.",
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -82,6 +94,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
       message: data.title || "Review this action before it is executed.",
       draftBody: data.preview,
       approvalId: data.approvalId,
+      routing: normalizeRouting(raw),
     };
   }
   const toolName = raw.tool_used;
@@ -96,6 +109,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         tool_count: data.tool_count,
         categories: data.categories,
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -123,6 +137,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         items,
         summary: data.count ? `Found ${data.count} email(s) that may need attention.` : "No reply-needed emails found.",
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -152,6 +167,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         items,
         summary: items.length ? `Loaded ${items.length} calendar event(s) for today.` : "No calendar events found for today.",
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -173,6 +189,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         items,
         summary: items.length ? `Found ${items.length} recent file(s).` : "No recent files found.",
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -185,6 +202,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         kind: "approvals",
         items,
       },
+      routing: normalizeRouting(raw),
     };
   }
 
@@ -195,6 +213,19 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
       kind: "message",
       message: genericToolMessage(toolName, data),
     },
+    routing: normalizeRouting(raw),
+  };
+}
+
+function normalizeRouting(raw: any): AgentRoutingDebug | undefined {
+  const routing = raw?.routing || raw?.agent;
+  if (!routing || typeof routing !== "object") return undefined;
+  return {
+    selectedTool: routing.selectedTool ?? raw.tool_used ?? raw.toolUsed ?? null,
+    confidence: typeof routing.confidence === "number" ? routing.confidence : undefined,
+    reason: typeof routing.reason === "string" ? routing.reason : undefined,
+    clarificationNeeded: Boolean(routing.clarificationNeeded),
+    approvalRequired: Boolean(routing.approvalRequired),
   };
 }
 

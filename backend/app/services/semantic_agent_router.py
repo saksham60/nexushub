@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from app.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.services.agent_capabilities import is_capability_question
 from app.services.openai_llm_service import OpenAILLMService
@@ -42,7 +43,9 @@ class SemanticAgentRouter:
         *,
         llm: OpenAILLMService | None = None,
         catalog_service: ToolCatalogService | None = None,
+        settings: Settings | None = None,
     ) -> None:
+        self._settings = settings or get_settings()
         self._llm = llm or OpenAILLMService()
         self._catalog_service = catalog_service or ToolCatalogService()
 
@@ -68,6 +71,13 @@ class SemanticAgentRouter:
                 tool_name="direct_response",
                 confidence=1.0,
                 reason="Direct status or capability response.",
+            )
+        if not self._settings.enable_semantic_router:
+            return SemanticRoutingDecision(
+                response_type="error",
+                error_code="FEATURE_DISABLED",
+                error_message="Semantic routing is disabled. Set ENABLE_SEMANTIC_ROUTER=true to enable it.",
+                reason="Semantic router feature flag is disabled.",
             )
 
         try:

@@ -147,6 +147,14 @@ export function CommandCenterActionHub({
           {report && (
             <div className="mt-4 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-white p-3 text-sm">
               <p className="mb-1 text-xs text-zinc-500">{sourceFilename}</p>
+              <p className="mb-2 text-xs text-zinc-500">
+                {report.sourceStats?.charactersExtracted ?? 0} chars extracted
+                {report.sourceStats?.parser ? ` via ${report.sourceStats.parser}` : ""}
+                {" · "}
+                LLM {report.llmStatus}
+                {" · "}
+                {new Date(report.createdAt).toLocaleString()}
+              </p>
               <h3 className="font-semibold text-zinc-900">{report.title}</h3>
               <p className="mt-2 whitespace-pre-wrap text-zinc-700">{report.report}</p>
               {report.sections.length > 0 && (

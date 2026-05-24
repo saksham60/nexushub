@@ -35,6 +35,12 @@ class AgentOrchestrator:
                     "reason": decision.reason,
                     "confidence": decision.confidence,
                 },
+                "routing": _routing_debug(
+                    selected_tool="direct_response",
+                    decision=decision,
+                    clarification_needed=False,
+                    approval_required=False,
+                ),
             }
         if decision.response_type == "clarification":
             return {
@@ -48,6 +54,12 @@ class AgentOrchestrator:
                     "routing_source": "openai_semantic_router",
                     "reason": decision.reason,
                 },
+                "routing": _routing_debug(
+                    selected_tool=decision.tool_name,
+                    decision=decision,
+                    clarification_needed=True,
+                    approval_required=decision.requires_approval,
+                ),
             }
         if decision.response_type == "error":
             return {
@@ -61,6 +73,12 @@ class AgentOrchestrator:
                     "routing_source": "openai_semantic_router",
                     "reason": decision.reason,
                 },
+                "routing": _routing_debug(
+                    selected_tool=decision.tool_name,
+                    decision=decision,
+                    clarification_needed=False,
+                    approval_required=decision.requires_approval,
+                ),
             }
 
         tool_name = decision.tool_name
@@ -69,6 +87,12 @@ class AgentOrchestrator:
                 "type": "clarification",
                 "message": "I could not match that request to an available NexusHub tool.",
                 "confidence": decision.confidence,
+                "routing": _routing_debug(
+                    selected_tool=None,
+                    decision=decision,
+                    clarification_needed=True,
+                    approval_required=False,
+                ),
             }
         if decision.requires_approval:
             return {
@@ -84,6 +108,12 @@ class AgentOrchestrator:
                     "routing_source": "openai_semantic_router",
                     "reason": decision.reason,
                 },
+                "routing": _routing_debug(
+                    selected_tool=tool_name,
+                    decision=decision,
+                    clarification_needed=False,
+                    approval_required=True,
+                ),
             }
 
         arguments = {
@@ -102,6 +132,12 @@ class AgentOrchestrator:
                 "provider": "microsoft",
                 "connect_url": "/auth/microsoft/start",
                 "message": "Please connect Microsoft 365 first.",
+                "routing": _routing_debug(
+                    selected_tool=tool_name,
+                    decision=decision,
+                    clarification_needed=False,
+                    approval_required=False,
+                ),
             }
         return {
             "type": "agent_response",
@@ -113,4 +149,26 @@ class AgentOrchestrator:
                 "reason": decision.reason,
                 "confidence": decision.confidence,
             },
+            "routing": _routing_debug(
+                selected_tool=tool_name,
+                decision=decision,
+                clarification_needed=False,
+                approval_required=False,
+            ),
         }
+
+
+def _routing_debug(
+    *,
+    selected_tool: str | None,
+    decision: Any,
+    clarification_needed: bool,
+    approval_required: bool,
+) -> dict[str, Any]:
+    return {
+        "selectedTool": selected_tool,
+        "confidence": decision.confidence,
+        "reason": decision.reason,
+        "clarificationNeeded": clarification_needed,
+        "approvalRequired": approval_required,
+    }
