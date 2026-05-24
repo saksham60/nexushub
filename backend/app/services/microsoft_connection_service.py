@@ -19,8 +19,8 @@ class MicrosoftConnectionService:
     ) -> str:
         email = profile.get("mail") or profile.get("userPrincipalName")
         display_name = profile.get("displayName")
-        final_user_id = user_id or self._upsert_user(
-            email=email, display_name=display_name
+        final_user_id = self._upsert_user(
+            user_id=user_id, email=email, display_name=display_name
         )
         expires_at = datetime.now(UTC) + timedelta(
             seconds=int(token_response.get("expires_in") or 3600)
@@ -101,10 +101,13 @@ class MicrosoftConnectionService:
         ).eq("user_id", user_id).eq("provider", "microsoft").execute()
         return {"connected": False, "provider": "microsoft"}
 
-    def _upsert_user(self, *, email: str | None, display_name: str | None) -> str:
+    def _upsert_user(
+        self, *, user_id: str | None, email: str | None, display_name: str | None
+    ) -> str:
         if not email:
             raise ValueError("Microsoft profile did not include an email.")
-        existing = (
+
+        existing_by_email = (
             get_supabase()
             .table("users")
             .select("id")
@@ -112,16 +115,35 @@ class MicrosoftConnectionService:
             .limit(1)
             .execute()
         )
-        if existing.data:
-            user_id = existing.data[0]["id"]
+        if existing_by_email.data:
+            existing_user_id = existing_by_email.data[0]["id"]
             get_supabase().table("users").update({"display_name": display_name}).eq(
-                "id", user_id
+                "id", existing_user_id
             ).execute()
-            return str(user_id)
+            return str(existing_user_id)
+
+        if user_id:
+            existing_by_id = (
+                get_supabase()
+                .table("users")
+                .select("id")
+                .eq("id", user_id)
+                .limit(1)
+                .execute()
+            )
+            if existing_by_id.data:
+                get_supabase().table("users").update(
+                    {"email": email, "display_name": display_name}
+                ).eq("id", user_id).execute()
+                return str(user_id)
+
+        record = {"email": email, "display_name": display_name}
+        if user_id:
+            record["id"] = user_id
         created = (
             get_supabase()
             .table("users")
-            .insert({"email": email, "display_name": display_name})
+            .insert(record)
             .execute()
         )
         return str(created.data[0]["id"])
