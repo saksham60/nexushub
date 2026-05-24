@@ -1,7 +1,7 @@
 "use client";
 
 import { AgentChatResponse } from "@/features/agent/types";
-import { AlertCircle, FileText, CheckCircle, Mail, Calendar, Link as LinkIcon } from "lucide-react";
+import { AlertCircle, CheckCircle, Link as LinkIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";

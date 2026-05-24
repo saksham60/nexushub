@@ -3,11 +3,28 @@ import { apiClient } from "@/lib/api/client";
 import { endpoints } from "@/lib/api/endpoints";
 import { MicrosoftStatusResponse, MicrosoftDisconnectResponse } from "./types";
 import { queryKeys } from "@/lib/query/queryKeys";
+import { ensureUserId } from "@/lib/session/localUser";
+
+function microsoftStatusUrl() {
+  return `${endpoints.microsoftStatus}?user_id=${encodeURIComponent(ensureUserId())}`;
+}
+
+function microsoftDisconnectUrl() {
+  return `${endpoints.microsoftDisconnect}?user_id=${encodeURIComponent(ensureUserId())}`;
+}
+
+function getBackendUrl() {
+  return (
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:3001"
+  ).replace(/\/$/, "");
+}
 
 export function useMicrosoftStatus() {
   return useQuery<MicrosoftStatusResponse>({
     queryKey: queryKeys.microsoft.status(),
-    queryFn: () => apiClient.get<MicrosoftStatusResponse>(endpoints.microsoftStatus),
+    queryFn: () => apiClient.get<MicrosoftStatusResponse>(microsoftStatusUrl()),
     retry: 1,
   });
 }
@@ -15,7 +32,8 @@ export function useMicrosoftStatus() {
 export function useConnectMicrosoft() {
   // We don't fetch this as an API request since it redirects the browser to start OAuth.
   return () => {
-    window.location.href = `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"}${endpoints.microsoftStart}`;
+    const userId = ensureUserId();
+    window.location.href = `${getBackendUrl()}${endpoints.microsoftStart}?user_id=${encodeURIComponent(userId)}`;
   };
 }
 
@@ -23,12 +41,12 @@ export function useDisconnectMicrosoft() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => apiClient.post<MicrosoftDisconnectResponse>(endpoints.microsoftDisconnect),
-    onSuccess: (data) => {
+    mutationFn: () => apiClient.post<MicrosoftDisconnectResponse>(microsoftDisconnectUrl()),
+    onSuccess: () => {
       queryClient.setQueryData(queryKeys.microsoft.status(), {
-        status: "ok",
         connected: false,
-        provider: "microsoft"
+        provider: "microsoft",
+        connect_url: endpoints.microsoftStart,
       });
       queryClient.invalidateQueries({ queryKey: ["agent-result"] });
     },

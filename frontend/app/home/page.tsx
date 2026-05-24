@@ -6,13 +6,11 @@ import { AgentCommandBar } from "@/components/agent/AgentCommandBar";
 import { AgentResponsePanel } from "@/components/agent/AgentResponsePanel";
 import { SuggestedPromptChips } from "@/components/agent/SuggestedPromptChips";
 import { AgentChatResponse } from "@/features/agent/types";
-import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/query/queryKeys";
 import { useSession } from "@/features/session/hooks";
 
 export default function HomePage() {
   const { data: session } = useSession();
-  const [lastResponse, setLastResponse] = useState<AgentChatResponse | null>(null);
+  const [lastResponse] = useState<AgentChatResponse | null>(null);
   
   // This is a hacky way to observe the mutation result for the UI panel, 
   // in a real app we'd keep this in the AgentCommandBar or a shared context.
@@ -56,7 +54,7 @@ export default function HomePage() {
         {/* Placeholder cards for Daily Brief, Action Queue, Suggested Actions */}
         <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm flex flex-col items-center justify-center text-center h-48">
           <h3 className="font-medium text-zinc-900 mb-2">Daily Brief</h3>
-          <p className="text-sm text-zinc-500">Summary of your day's priorities will appear here.</p>
+          <p className="text-sm text-zinc-500">Summary of your day&apos;s priorities will appear here.</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-zinc-200 shadow-sm flex flex-col items-center justify-center text-center h-48">
           <h3 className="font-medium text-zinc-900 mb-2">Action Queue</h3>

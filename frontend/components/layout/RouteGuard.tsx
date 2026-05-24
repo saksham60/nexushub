@@ -1,24 +1,12 @@
 "use client";
 
-import { useSession, useBootstrapSession } from "@/features/session/hooks";
-import { useEffect, useState } from "react";
+import { useSession } from "@/features/session/hooks";
 import { Loader2 } from "lucide-react";
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
-  const { data: session, isLoading, isError, error } = useSession();
-  const bootstrapSession = useBootstrapSession();
-  const [bootstrapping, setBootstrapping] = useState(false);
+  const { data: session, isLoading, isError } = useSession();
 
-  useEffect(() => {
-    if (session?.status === "unauthenticated" && process.env.NODE_ENV === "development" && !bootstrapping) {
-      setBootstrapping(true);
-      bootstrapSession.mutate(undefined, {
-        onSettled: () => setBootstrapping(false)
-      });
-    }
-  }, [session, bootstrapSession, bootstrapping]);
-
-  if (isLoading || bootstrapping) {
+  if (isLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-zinc-50">
         <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />

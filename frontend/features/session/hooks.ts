@@ -1,14 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api/client";
-import { endpoints } from "@/lib/api/endpoints";
 import { SessionResponse } from "./types";
 import { queryKeys } from "@/lib/query/queryKeys";
+import { clearStoredUserId, ensureUserId } from "@/lib/session/localUser";
+
+function getLocalSession(): SessionResponse {
+  const userId = ensureUserId();
+  return {
+    status: "ok",
+    user: {
+      id: userId,
+      email: "local@nexushub.app",
+      display_name: "NexusHub User",
+    },
+    workspace: {
+      id: "default",
+      name: "Default Workspace",
+    },
+  };
+}
 
 export function useSession() {
   return useQuery<SessionResponse>({
     queryKey: queryKeys.session.me(),
-    queryFn: () => apiClient.get<SessionResponse>(endpoints.sessionMe),
-    retry: false, // Don't retry if unauthenticated
+    queryFn: getLocalSession,
+    retry: false,
   });
 }
 
@@ -16,7 +31,7 @@ export function useBootstrapSession() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: () => apiClient.post<SessionResponse>(endpoints.sessionBootstrap),
+    mutationFn: async () => getLocalSession(),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.session.me(), data);
     },
@@ -27,7 +42,10 @@ export function useLogout() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => apiClient.post(endpoints.sessionLogout),
+    mutationFn: async () => {
+      clearStoredUserId();
+      return { status: "ok" };
+    },
     onSuccess: () => {
       queryClient.setQueryData(queryKeys.session.me(), {
         status: "unauthenticated",

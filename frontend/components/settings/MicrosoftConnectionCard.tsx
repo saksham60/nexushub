@@ -43,8 +43,8 @@ export function MicrosoftConnectionCard() {
           <div className="space-y-6">
             <div className="bg-zinc-50 border border-zinc-100 p-4 rounded-lg flex items-center justify-between">
               <div>
-                <p className="font-medium text-zinc-900">{status.account.display_name}</p>
-                <p className="text-sm text-zinc-500">{status.account.email}</p>
+                <p className="font-medium text-zinc-900">{status.display_name || "Microsoft 365"}</p>
+                <p className="text-sm text-zinc-500">{status.email || "Connected account"}</p>
               </div>
               <Button 
                 variant="outline" 

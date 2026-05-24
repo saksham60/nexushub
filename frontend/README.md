@@ -1,63 +1,54 @@
 # NexusHub Frontend
 
-## 1. Architecture
-Frontend → Backend only.
-Frontend never calls MCP.
-Frontend never stores Microsoft tokens.
+## Architecture
 
-## 2. Setup
-```bash
-npm install
-```
+Frontend -> Backend only. The frontend never calls MCP and never stores Microsoft tokens.
 
-## 3. Environment
-Create a `.env.local` file based on `.env.example`:
+## Environment
+
+Create `.env.local` from `.env.example`:
+
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 NEXT_PUBLIC_APP_NAME=NexusHub
 NEXT_PUBLIC_APP_ENV=local
 ```
 
-## 4. Run
+On Vercel, set:
+
+```env
+NEXT_PUBLIC_BACKEND_URL=https://nexushub-2vof.onrender.com
+NEXT_PUBLIC_APP_ENV=production
+```
+
+`NEXT_PUBLIC_API_BASE_URL` is supported as a fallback, but `NEXT_PUBLIC_BACKEND_URL` is preferred.
+
+## Run
+
 ```bash
+npm install
 npm run dev
 ```
 
-## 5. Backend Requirements
-Backend must expose:
-- `/health`
-- `/auth/session/me`
-- `/auth/session/bootstrap`
-- `/auth/microsoft/status`
-- `/auth/microsoft/start`
-- `/auth/microsoft/disconnect`
-- `/agent/chat`
-- `/approvals`
+## Backend Routes Used
 
-## 6. CORS
-Backend must allow:
-- origin `http://localhost:3000`
-- credentials `true`
+- `GET /health`
+- `GET /auth/microsoft/status?user_id=...`
+- `GET /auth/microsoft/start?user_id=...`
+- `POST /auth/microsoft/disconnect?user_id=...`
+- `POST /agent/chat`
+- `GET /approvals?user_id=...`
+- `POST /approvals/{approval_id}/approve?user_id=...`
+- `POST /approvals/{approval_id}/reject?user_id=...`
 
-If auth/session calls fail in browser but work in Postman, check backend CORS and cookie settings.
+Uploads and report creation are local UI stubs until backend endpoints are added.
 
-## 7. State Management
-- **TanStack Query**: server state
-- **Zustand**: UI state only
-- **React Hook Form + Zod**: forms
-- **Sonner**: notifications
+## Validate
 
-## 8. OAuth Flow
-Frontend redirects to backend `/auth/microsoft/start`.
-Backend handles Microsoft callback.
-Backend redirects to `/settings?microsoft=connected`.
-
-## 9. Streaming Future
-Agent streaming can later use `/agent/chat/stream` through SSE. (Currently prepared as a placeholder in `hooks.ts`).
-
-## 10. Tests
 ```bash
-npm run test
-npm run test:e2e
 npm run typecheck
+npm run lint
+npm test -- --run
+npm run build
 ```

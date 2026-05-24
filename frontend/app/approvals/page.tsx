@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { useApprovals, useApproveAction, useRejectAction } from "@/features/approvals/hooks";
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SectionCard } from "@/components/common/SectionCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -17,7 +16,7 @@ export default function ApprovalsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("pending");
   const [cursor, setCursor] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error, refetch } = useApprovals({
+  const { data, isLoading, isError, refetch } = useApprovals({
     status: statusFilter,
     limit: 20,
     cursor,

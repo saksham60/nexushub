@@ -39,7 +39,7 @@ export default function CalendarPage() {
       </div>
 
       <div className="mt-12">
-        <h2 className="text-lg font-medium text-zinc-900 mb-6">Today's Agenda</h2>
+        <h2 className="text-lg font-medium text-zinc-900 mb-6">Today&apos;s Agenda</h2>
         
         {!results || !results.items || results.items.length === 0 ? (
           <EmptyState 
@@ -49,7 +49,7 @@ export default function CalendarPage() {
           />
         ) : (
           <div className="relative border-l border-zinc-200 ml-4 md:ml-6 space-y-8 pb-4">
-            {results.items.map((event, index) => {
+            {results.items.map((event) => {
               const startDate = new Date(event.start);
               const endDate = new Date(event.end);
               const timeString = `${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;

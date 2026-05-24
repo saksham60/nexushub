@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/common/PageHeader";
 import { AgentCommandBar } from "@/components/agent/AgentCommandBar";
 import { SuggestedPromptChips } from "@/components/agent/SuggestedPromptChips";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { MailItem } from "@/features/mail/types";
 import { EmptyState } from "@/components/common/EmptyState";

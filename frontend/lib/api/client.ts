@@ -1,7 +1,7 @@
 import { ApiError, ApiErrorResponse } from "./errors";
 
 const getBaseUrl = () => {
-  const url = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const url = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!url) {
     if (process.env.NODE_ENV === "development") {
       console.warn("NEXT_PUBLIC_BACKEND_URL is missing. Falling back to http://localhost:3001");
@@ -9,7 +9,7 @@ const getBaseUrl = () => {
     }
     throw new Error("Configuration Error: NEXT_PUBLIC_BACKEND_URL is undefined.");
   }
-  return url;
+  return url.replace(/\/$/, "");
 };
 
 export const apiClient = {
@@ -83,11 +83,23 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit): Promise
       }
       
       // Fallback for non-standard errors
+      const detail = data?.detail;
+      const detailMessage =
+        typeof detail === "string"
+          ? detail
+          : detail?.message || detail?.error || data?.message;
+
       throw new ApiError({
         status: "error",
         error: {
-          code: response.status === 401 ? "UNAUTHENTICATED" : response.status === 403 ? "FORBIDDEN" : "INTERNAL_ERROR",
-          message: data?.message || `HTTP error! status: ${response.status}`,
+          code:
+            detail?.code ||
+            (response.status === 401
+              ? "UNAUTHENTICATED"
+              : response.status === 403
+                ? "FORBIDDEN"
+                : "INTERNAL_ERROR"),
+          message: detailMessage || `HTTP error! status: ${response.status}`,
         }
       });
     }
