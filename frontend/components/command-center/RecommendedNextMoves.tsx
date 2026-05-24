@@ -4,11 +4,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowRight } from "lucide-react";
 
-export function RecommendedNextMoves() {
+export function RecommendedNextMoves({ onRunPrompt }: { onRunPrompt?: (prompt: string) => void }) {
   const recommendations = [
-    { title: "Draft replies to 5 urgent emails", action: "Generate" },
-    { title: "Prepare Q3 review agenda", action: "Prepare" },
-    { title: "Summarize latest financial report", action: "Summarize" },
+    { title: "Draft replies to urgent emails", action: "Generate", prompt: "Draft urgent replies" },
+    { title: "Prepare Q3 review agenda", action: "Prepare", prompt: "Prepare my next meeting" },
+    { title: "Summarize latest financial report", action: "Summarize", prompt: "Summarize recent files" },
   ];
 
   return (
@@ -22,7 +22,12 @@ export function RecommendedNextMoves() {
         {recommendations.map((rec, idx) => (
           <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white rounded-lg border border-zinc-100 shadow-sm hover:border-blue-200 transition-colors">
             <span className="text-sm font-medium text-zinc-700">{rec.title}</span>
-            <Button size="sm" variant="secondary" className="shrink-0 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="shrink-0 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+              onClick={() => onRunPrompt?.(rec.prompt)}
+            >
               {rec.action} <ArrowRight className="h-3 w-3 ml-1.5" />
             </Button>
           </div>

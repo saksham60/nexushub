@@ -29,7 +29,7 @@ async def create(payload: ApprovalCreateRequest) -> dict[str, object]:
 @router.post("/execute")
 async def execute(payload: ApprovalExecuteRequest) -> dict[str, object]:
     try:
-        return {"data": ApprovalService().execute_approval(**payload.model_dump())}
+        return {"data": await ApprovalService().execute_approval(**payload.model_dump())}
     except NexusHubError as exc:
         raise HTTPException(
             status_code=400, detail={"code": exc.code, "message": exc.message}

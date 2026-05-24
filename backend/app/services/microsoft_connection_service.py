@@ -69,31 +69,56 @@ class MicrosoftConnectionService:
         return str(final_user_id)
 
     def get_status(self, *, user_id: str) -> dict[str, Any]:
-        response = (
+        connection = self.get_connected_account(user_id=user_id)
+        if not connection:
+            return {
+                "connected": False,
+                "provider": "microsoft",
+                "connect_url": "/auth/microsoft/start",
+            }
+        return {
+            "connected": True,
+            "provider": "microsoft",
+            "display_name": connection.get("display_name"),
+            "email": connection.get("provider_email"),
+            "scopes": connection.get("scopes") or [],
+        }
+
+    def get_connected_account(
+        self, *, user_id: str, workspace_id: str | None = None
+    ) -> dict[str, Any] | None:
+        query = (
             get_supabase()
             .table("oauth_connections")
             .select("provider,provider_email,display_name,scopes,status")
             .eq("user_id", user_id)
             .eq("provider", "microsoft")
             .eq("status", "connected")
+            .order("updated_at", desc=True)
             .limit(1)
-            .execute()
         )
+        if workspace_id:
+            query = query.eq("workspace_id", workspace_id)
+        response = query.execute()
         rows = response.data or []
-        if not rows:
-            return {
-                "connected": False,
-                "provider": "microsoft",
-                "connect_url": "/auth/microsoft/start",
-            }
-        row = rows[0]
-        return {
-            "connected": True,
-            "provider": "microsoft",
-            "display_name": row.get("display_name"),
-            "email": row.get("provider_email"),
-            "scopes": row.get("scopes") or [],
-        }
+        return dict(rows[0]) if rows else None
+
+    def has_scope(
+        self, *, user_id: str, scope: str, workspace_id: str | None = None
+    ) -> bool:
+        connection = self.get_connected_account(
+            user_id=user_id, workspace_id=workspace_id
+        )
+        scopes = connection.get("scopes") if connection else []
+        if isinstance(scopes, str):
+            scope_items = scopes.split()
+        else:
+            scope_items = scopes or []
+        expected = scope.lower()
+        return any(
+            str(item).lower() == expected or str(item).lower().endswith(f"/{expected}")
+            for item in scope_items
+        )
 
     def disconnect(self, *, user_id: str) -> dict[str, Any]:
         get_supabase().table("oauth_connections").update(

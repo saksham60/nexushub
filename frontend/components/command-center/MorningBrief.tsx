@@ -3,10 +3,19 @@
 import { useSession } from "@/features/session/hooks";
 import { AgentCommandBar } from "@/components/agent/AgentCommandBar";
 import { SuggestedPromptChips } from "@/components/agent/SuggestedPromptChips";
+import { AgentChatResponse } from "@/features/agent/types";
 
-export function MorningBrief() {
+export function MorningBrief({
+  onRunPrompt,
+  agentResponse,
+  isSubmittingPrompt,
+}: {
+  onRunPrompt?: (prompt: string) => Promise<AgentChatResponse | void> | AgentChatResponse | void;
+  agentResponse?: AgentChatResponse | null;
+  isSubmittingPrompt?: boolean;
+}) {
   const { data: session } = useSession();
-  
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
@@ -28,20 +37,23 @@ export function MorningBrief() {
       </div>
 
       <div className="max-w-3xl">
-        <AgentCommandBar placeholder="Ask NexusHub to find, summarize, prepare, or draft…" />
+        <AgentCommandBar
+          placeholder="Ask NexusHub to find, summarize, prepare, or draft..."
+          onSubmitCommand={onRunPrompt}
+          response={agentResponse}
+          isPending={isSubmittingPrompt}
+        />
         <div className="mt-3">
-          <SuggestedPromptChips 
+          <SuggestedPromptChips
             prompts={[
               "What needs my attention?",
               "Prepare my next meeting",
               "Draft urgent replies",
               "Summarize recent files",
-              "Show pending approvals"
+              "Show pending approvals",
+              "How many tools are available?",
             ]}
-            onSelect={(p) => {
-              const input = document.querySelector<HTMLInputElement>('input[name="command"]');
-              if (input) input.value = p;
-            }}
+            onSelect={(prompt) => void onRunPrompt?.(prompt)}
           />
         </div>
       </div>

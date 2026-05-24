@@ -12,7 +12,15 @@ export type PaginatedResponse<T> = {
 };
 
 export type ApprovalPreview =
-  | { kind: "email_draft"; to: string[]; subject: string; body_preview: string }
+  | {
+      kind: "email_draft";
+      title?: string;
+      to: string[];
+      subject: string;
+      body?: string;
+      body_preview?: string;
+      originalMessageId?: string | null;
+    }
   | { kind: "mark_read"; message_ids: string[]; count: number }
   | { kind: "calendar_event"; title: string; start: string; end: string }
   | { kind: "generic"; title: string; description: string; payload_summary?: Record<string, string> };

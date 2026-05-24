@@ -4,14 +4,16 @@ from typing import Any
 
 from app.config import get_settings
 from app.core.logging import get_logger
+from app.services.agent_capabilities import (
+    DEFAULT_CAPABILITY_MESSAGE,
+    build_direct_response,
+    is_capability_question,
+)
 from app.services.mcp_client import call_tool
 
 logger = get_logger(__name__)
 
-DIRECT_RESPONSE_MESSAGE = (
-    "Hi. I can help with your Microsoft 365 workspace: mail that needs reply, "
-    "today's agenda, recent files, Teams action items, and pending approvals."
-)
+DIRECT_RESPONSE_MESSAGE = DEFAULT_CAPABILITY_MESSAGE
 
 
 class AgentOrchestrator:
@@ -45,13 +47,14 @@ class AgentOrchestrator:
     ) -> dict[str, Any]:
         tool_name = self._route(message)
         if tool_name == "direct_response":
+            direct_data = await build_direct_response(message)
             return {
                 "type": "agent_response",
                 "tool_used": "direct_response",
                 "data": {
                     "ok": True,
                     "source": "agent",
-                    "data": {"message": DIRECT_RESPONSE_MESSAGE},
+                    "data": direct_data,
                 },
                 "agent": {"mode": "rule_based"},
             }
@@ -77,7 +80,7 @@ class AgentOrchestrator:
 
     def _route(self, message: str) -> str:
         lowered = message.lower()
-        if self._is_greeting_or_smalltalk(lowered):
+        if self._is_greeting_or_smalltalk(lowered) or is_capability_question(lowered):
             return "direct_response"
         if "approval" in lowered:
             return "approval_list_pending"

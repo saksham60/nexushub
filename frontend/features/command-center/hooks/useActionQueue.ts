@@ -7,6 +7,10 @@ import { RecentFile } from "@/features/docs/types";
 import { ApprovalAction } from "@/features/approvals/types";
 import { useApprovals } from "@/features/approvals/hooks";
 import { useState, useMemo } from "react";
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
+import { normalizeAgentResponse } from "@/features/agent/types";
+import { getRequestIdentity } from "@/lib/session/localUser";
 
 export function useActionQueue() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -15,16 +19,19 @@ export function useActionQueue() {
   // Fetch from existing endpoints
   const mailQuery = useQuery<{ items: MailItem[] }>({
     queryKey: queryKeys.agent.result("mail_find_needs_reply"),
+    queryFn: () => fetchAgentItems<MailItem>("Find Outlook emails that need replies.", "mail_results"),
     enabled: true,
   });
 
   const calendarQuery = useQuery<{ items: CalendarEvent[] }>({
     queryKey: queryKeys.agent.result("calendar_get_today_agenda"),
+    queryFn: () => fetchAgentItems<CalendarEvent>("Get today's calendar agenda.", "calendar_agenda"),
     enabled: true,
   });
 
   const docsQuery = useQuery<{ items: RecentFile[] }>({
     queryKey: queryKeys.agent.result("docs_list_recent_files"),
+    queryFn: () => fetchAgentItems<RecentFile>("List recent files.", "recent_files"),
     enabled: true,
   });
 
@@ -32,6 +39,12 @@ export function useActionQueue() {
 
   const isLoading = mailQuery.isLoading || calendarQuery.isLoading || docsQuery.isLoading || approvalsQuery.isLoading;
   const isError = mailQuery.isError || calendarQuery.isError || docsQuery.isError || approvalsQuery.isError;
+  const errorMessage =
+    (mailQuery.error as Error | null)?.message ||
+    (calendarQuery.error as Error | null)?.message ||
+    (docsQuery.error as Error | null)?.message ||
+    (approvalsQuery.error as Error | null)?.message ||
+    null;
 
   const items = useMemo(() => {
     if (isLoading) return [];
@@ -97,20 +110,21 @@ export function useActionQueue() {
     if (approvalsQuery.data?.items) {
       actionItems.push(
         ...approvalsQuery.data.items.map((approval: ApprovalAction): ActionItem => {
+          const preview = approval.preview as any;
           let title = approval.action_type;
           if (approval.preview.kind === "email_draft") title = "Draft Email";
           if (approval.preview.kind === "calendar_event") title = "Schedule Event";
-          if ((approval.preview as any).title) title = (approval.preview as any).title;
+          if (preview.title) title = preview.title;
 
           return {
             id: `app_${approval.id}`,
             type: "approval",
             title: title,
-            description: "Pending approval request",
+            description: preview.body_preview || preview.description || "Pending approval request",
             source: "NexusHub",
             priority: "high",
             status: "pending",
-            primaryActionLabel: "Review",
+            primaryActionLabel: approval.action_type === "mail.create_draft_reply" ? "Create Draft" : "Review",
             originalItem: approval,
           };
         })
@@ -147,10 +161,32 @@ export function useActionQueue() {
     filteredItems,
     isLoading,
     isError,
+    errorMessage,
     activeFilter,
     setActiveFilter,
     selectedItem: activeSelectedItem,
     setSelectedItem,
     refetch,
   };
+}
+
+async function fetchAgentItems<T>(
+  message: string,
+  expectedKind: "mail_results" | "calendar_agenda" | "recent_files"
+): Promise<{ items: T[] }> {
+  const raw = await apiClient.post(endpoints.agentChat, {
+    ...getRequestIdentity(),
+    message,
+  });
+  const response = normalizeAgentResponse(raw);
+  if (response.type === "connect_required") {
+    throw new Error(response.message);
+  }
+  if (response.type === "error") {
+    throw new Error(response.error.message);
+  }
+  if (response.type !== "agent_response" || response.data.kind !== expectedKind) {
+    throw new Error("NexusHub returned an unexpected agent response.");
+  }
+  return { items: response.data.items as T[] };
 }

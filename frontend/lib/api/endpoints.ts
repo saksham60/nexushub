@@ -4,6 +4,8 @@ export const endpoints = {
   microsoftStart: "/auth/microsoft/start",
   microsoftDisconnect: "/auth/microsoft/disconnect",
   agentChat: "/agent/chat",
+  mailDraftPreview: "/mail/drafts/preview",
+  mailDraftCreate: "/mail/drafts",
   approvals: "/approvals",
   approvalApprove: (approvalId: string) => `/approvals/${approvalId}/approve`,
   approvalReject: (approvalId: string) => `/approvals/${approvalId}/reject`,

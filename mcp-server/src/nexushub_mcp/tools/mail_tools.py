@@ -210,31 +210,42 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
 
     @mcp.tool(description="Create a draft reply preview. This never sends mail in the MVP.")
     async def mail_create_draft_reply(
-        to: str,
+        to: str | list[str],
         subject: str,
         context: str,
         user_id: str | None = None,
         workspace_id: str | None = None,
         tone: Tone = "professional",
         intent: str | None = None,
+        originalMessageId: str | None = None,
     ) -> dict[str, Any]:
+        recipients = _normalize_recipients(to)
+        primary_recipient = recipients[0] if recipients else "recipient"
         log_tool_call(
             logger,
             "mail_create_draft_reply",
             {
-                "toProvided": bool(to),
+                "toProvided": bool(recipients),
                 "tone": tone,
                 "contextLength": len(context),
                 "hasUserId": bool(user_id),
+                "hasOriginalMessageId": bool(originalMessageId),
             },
         )
-        preview = _draft_reply(to=to, subject=subject, context=context, tone=tone, intent=intent)
+        preview = _draft_reply(
+            to=primary_recipient,
+            subject=subject,
+            context=context,
+            tone=tone,
+            intent=intent,
+        )
         payload = {
-            "to": to,
+            "to": recipients,
             "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
             "body": preview,
             "tone": tone,
             "intent": intent,
+            "originalMessageId": originalMessageId,
         }
         if runtime.settings.mode == "graph":
             missing = ensure_user_id(runtime.settings.mode, user_id)
@@ -247,7 +258,15 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
                     tool_name="mail_create_draft_reply",
                     action_type="mail.create_draft_reply",
                     payload=payload,
-                    preview={"title": f"Draft reply to {to}", "body": preview},
+                    preview={
+                        "kind": "email_draft",
+                        "title": f"Draft reply to {primary_recipient}",
+                        "to": recipients,
+                        "subject": payload["subject"],
+                        "body": preview,
+                        "body_preview": preview,
+                        "originalMessageId": originalMessageId,
+                    },
                 )
             except BackendInternalClientError as exc:
                 return exc.to_mcp_response()
@@ -258,7 +277,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             return approval_required(
                 "microsoft_graph",
                 action_type="mail.create_draft_reply",
-                title=f"Draft reply to {to}",
+                title=f"Draft reply to {primary_recipient}",
                 preview=preview,
                 payload=payload,
                 approval_id=approval_id,
@@ -266,7 +285,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
 
         record = runtime.approval_store.create(
             action_type="mail.create_draft_reply",
-            title=f"Draft reply to {to}",
+            title=f"Draft reply to {primary_recipient}",
             payload=payload,
             preview=preview,
         )
@@ -360,6 +379,7 @@ def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
         "messageId": message.get("id"),
         "threadId": message.get("conversationId"),
         "sender": _sender_name(message),
+        "senderEmail": _sender_email(message),
         "subject": message.get("subject"),
         "preview": message.get("bodyPreview"),
         "receivedAt": message.get("receivedDateTime"),
@@ -374,6 +394,13 @@ def _sender_name(message: dict[str, Any]) -> str:
     return str(email.get("name") or email.get("address") or "Unknown sender")
 
 
+def _sender_email(message: dict[str, Any]) -> str | None:
+    from_block = message.get("from") or {}
+    email = from_block.get("emailAddress") or {}
+    address = email.get("address")
+    return str(address) if address else None
+
+
 def _draft_reply(*, to: str, subject: str, context: str, tone: Tone, intent: str | None) -> str:
     greeting = f"Hi {to.split('@')[0].split('.')[0].title()}," if "@" in to else f"Hi {to},"
     intent_line = intent or "sharing my response based on the current context"
@@ -386,3 +413,9 @@ def _draft_reply(*, to: str, subject: str, context: str, tone: Tone, intent: str
 
 def _clamp(value: int, lower: int, upper: int) -> int:
     return max(lower, min(value, upper))
+
+
+def _normalize_recipients(value: str | list[str]) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    return [item for item in value if isinstance(item, str) and item.strip()]

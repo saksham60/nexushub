@@ -5,6 +5,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.core.logging import get_logger
+from app.services.agent_capabilities import build_direct_response, is_capability_question
 from app.services.mcp_client import call_tool
 from app.services.openai_llm_service import OpenAILLMService
 
@@ -37,7 +38,7 @@ TOOL_ARGUMENT_KEYS: dict[str, set[str]] = {
     "mail_find_needs_reply": {"days", "maxResults", "priority"},
     "mail_find_awaiting_approval": {"days", "maxResults"},
     "mail_summarize_thread": {"threadId", "messageId"},
-    "mail_create_draft_reply": {"to", "subject", "context", "tone", "intent"},
+    "mail_create_draft_reply": {"to", "subject", "context", "tone", "intent", "originalMessageId"},
     "mail_mark_as_read": {"messageIds"},
     "calendar_get_today_agenda": {"timezone"},
     "calendar_find_focus_blocks": {"date", "timezone", "minBlockMinutes"},
@@ -137,15 +138,13 @@ class LangGraphAgent:
 
     async def _call_selected_tool(self, state: AgentState) -> dict[str, Any]:
         if state["selected_tool"] == "direct_response":
-            message = str(
-                state.get("tool_args", {}).get("message")
-                or "Hi. I can help with your mail, calendar, Teams activity, documents, and pending approvals."
-            )
+            message = str(state.get("tool_args", {}).get("message") or state["message"])
+            direct_data = await build_direct_response(message)
             return {
                 "tool_result": {
                     "ok": True,
                     "source": "agent",
-                    "data": {"message": message},
+                    "data": direct_data,
                 }
             }
         arguments = {
@@ -241,7 +240,7 @@ Rules:
 
     def _fallback_tool(self, message: str) -> str:
         lowered = message.lower()
-        if _is_greeting_or_smalltalk(lowered):
+        if _is_greeting_or_smalltalk(lowered) or is_capability_question(lowered):
             return "direct_response"
         if "approval" in lowered:
             return "approval_list_pending"

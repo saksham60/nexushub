@@ -4,12 +4,13 @@ import { RecentFile } from "../docs/types";
 import { ApprovalAction } from "../approvals/types";
 
 export type AgentChatResponse =
+  | { type: "agent_response"; tool_used: "direct_response"; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> } }
   | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string } }
   | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string } }
   | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string } }
   | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] } }
   | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string }
-  | { type: "approval_required"; approval: ApprovalAction; message: string }
+  | { type: "approval_required"; approval: ApprovalAction; message: string; draftBody?: string; approvalId?: string }
   | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string }
   | { type: "error"; error: { code: string; message: string } };
 
@@ -53,7 +54,40 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
   }
 
   const data = toolResult.data || toolResult;
+  if (data.status === "approval_required") {
+    return {
+      type: "approval_required",
+      approval: {
+        id: String(data.approvalId || crypto.randomUUID()),
+        tool_name: raw.tool_used,
+        action_type: data.actionType || "approval.required",
+        preview: {
+          kind: "generic",
+          title: data.title || "Approval Required",
+          description: data.preview || "Review this action before it is executed.",
+        },
+        status: "pending",
+        created_at: new Date().toISOString(),
+      },
+      message: data.title || "Review this action before it is executed.",
+      draftBody: data.preview,
+      approvalId: data.approvalId,
+    };
+  }
   const toolName = raw.tool_used;
+
+  if (toolName === "direct_response") {
+    return {
+      type: "agent_response",
+      tool_used: "direct_response",
+      data: {
+        kind: "message",
+        message: data.message || "Done.",
+        tool_count: data.tool_count,
+        categories: data.categories,
+      },
+    };
+  }
 
   if (toolName === "mail_find_needs_reply") {
     const groups = Array.isArray(data.groups) ? data.groups : [];
@@ -64,7 +98,7 @@ export function normalizeAgentResponse(raw: any): AgentChatResponse {
         subject: item.subject || "(No subject)",
         from: {
           name: item.sender,
-          email: item.sender || "unknown",
+          email: item.senderEmail || item.sender || "unknown",
         },
         received_at: item.receivedAt || item.received_at || new Date().toISOString(),
         preview: item.preview || "",

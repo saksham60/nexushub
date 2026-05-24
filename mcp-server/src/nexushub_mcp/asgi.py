@@ -11,6 +11,7 @@ from starlette.routing import Mount, Route
 
 from nexushub_mcp.config import Settings
 from nexushub_mcp.server.mcp_server import create_mcp_server
+from nexushub_mcp.tools.catalog import tool_catalog
 from nexushub_mcp.utils.logger import configure_logging
 
 settings = Settings.from_env()
@@ -31,6 +32,10 @@ async def health(_: Request) -> JSONResponse:
             "status": "ok",
             "service": "nexushub-mcp-server",
             "mode": settings.mode,
+            "transport": settings.transport,
+            "backendInternalUrl": settings.backend_internal_url,
+            "internalServiceTokenConfigured": bool(settings.internal_service_token),
+            "tools": tool_catalog(),
         }
     )
 

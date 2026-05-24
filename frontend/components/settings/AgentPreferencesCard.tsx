@@ -1,3 +1,5 @@
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession, useLogout } from "@/features/session/hooks";
 import { Button } from "@/components/ui/button";

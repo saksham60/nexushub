@@ -12,3 +12,40 @@ export type MailItem = {
   reason?: string;
   suggested_action?: string;
 };
+
+export type DraftPreviewRequest = {
+  original_message_id?: string | null;
+  subject: string;
+  recipients: string[];
+  context: string;
+  tone?: "professional" | "concise" | "friendly";
+  intent?: string | null;
+};
+
+export type DraftPreviewResponse = {
+  status: "approval_required";
+  approvalId: string;
+  draftBody: string;
+  subject: string;
+  recipients: string[];
+  originalMessageId?: string | null;
+  source?: string;
+};
+
+export type DraftCreateRequest = {
+  original_message_id?: string | null;
+  draft_body: string;
+  subject: string;
+  recipients: string[];
+  approval_id: string;
+};
+
+export type DraftCreateResponse = {
+  success: boolean;
+  outlookDraftId?: string | null;
+  mailboxEmail: string;
+  createdAt: string;
+  webLink?: string | null;
+  simulated?: boolean;
+  approvalId: string;
+};

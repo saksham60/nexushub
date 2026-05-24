@@ -1,0 +1,27 @@
+export type HealthDependency = {
+  status: "ok" | "degraded" | "unreachable" | "unknown";
+  service?: string;
+  mode?: string;
+  transport?: string;
+  tools?: {
+    count?: number;
+    categories?: Array<{ name: string; tools: string[] }>;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+};
+
+export type BackendHealthResponse = {
+  status: "ok" | "degraded" | "unhealthy";
+  service: string;
+  backend: {
+    status: "ok";
+    service: string;
+    url?: string;
+  };
+  dependencies: {
+    mcp?: HealthDependency;
+  };
+};

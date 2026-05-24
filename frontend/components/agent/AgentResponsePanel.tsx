@@ -66,6 +66,18 @@ export function AgentResponsePanel({ response }: { response: AgentChatResponse |
   }
 
   if (response.type === "agent_response") {
+    if (response.data.kind === "message") {
+      return (
+        <Alert className="border-blue-200 bg-blue-50">
+          <CheckCircle className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-800">NexusHub</AlertTitle>
+          <AlertDescription className="text-blue-700 mt-2">
+            {response.data.message}
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
     return (
       <Alert className="border-green-200 bg-green-50">
         <CheckCircle className="h-4 w-4 text-green-600" />

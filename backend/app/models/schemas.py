@@ -43,3 +43,21 @@ class AgentChatRequest(BaseModel):
     user_id: str
     workspace_id: str | None = None
     message: str
+
+
+class MailDraftPreviewRequest(UserWorkspaceRequest):
+    original_message_id: str | None = None
+    subject: str
+    recipients: list[str] = Field(default_factory=list)
+    context: str
+    tone: str = "professional"
+    intent: str | None = None
+
+
+class MailDraftCreateRequest(UserWorkspaceRequest):
+    original_message_id: str | None = None
+    draft_body: str
+    subject: str
+    recipients: list[str] = Field(default_factory=list)
+    approval_id: str | None = None
+    simulate: bool = False

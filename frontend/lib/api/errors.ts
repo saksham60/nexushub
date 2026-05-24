@@ -28,7 +28,14 @@ export function getFriendlyErrorMessage(error: any): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "MICROSOFT_NOT_CONNECTED":
+      case "authentication_required":
         return "Connect Microsoft 365 to unlock Outlook, Calendar, and OneDrive data.";
+      case "consent_required":
+        return "Mail.ReadWrite permission is missing. Reconnect Microsoft 365 and approve Mail.ReadWrite.";
+      case "graph_error":
+        return "Microsoft Graph is not responding. Your in-app draft was kept.";
+      case "mcp_unreachable":
+        return "NexusHub MCP is not reachable. Your in-app draft was kept.";
       case "NOT_IMPLEMENTED":
         return "This module is prepared but not enabled yet.";
       case "BACKEND_UNAVAILABLE":
