@@ -5,8 +5,8 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.core.logging import get_logger
-from app.services.azure_foundry_llm_service import AzureFoundryLLMService
 from app.services.mcp_client import call_tool
+from app.services.openai_llm_service import OpenAILLMService
 
 logger = get_logger(__name__)
 
@@ -71,8 +71,8 @@ class AgentState(TypedDict, total=False):
 
 
 class LangGraphAgent:
-    def __init__(self, llm: AzureFoundryLLMService | None = None) -> None:
-        self._llm = llm or AzureFoundryLLMService()
+    def __init__(self, llm: OpenAILLMService | None = None) -> None:
+        self._llm = llm or OpenAILLMService()
         self._graph = self._build_graph()
 
     async def chat(
@@ -108,11 +108,11 @@ class LangGraphAgent:
             if self._missing_required_args(selected_tool, tool_args):
                 selected_tool = self._fallback_tool(message)
                 tool_args = {}
-            reason = str(selection.get("reason") or "Selected by Azure Foundry LLM.")
+            reason = str(selection.get("reason") or "Selected by OpenAI LLM.")
             return {
                 "selected_tool": selected_tool,
                 "tool_args": tool_args,
-                "routing_source": "azure_foundry_langgraph",
+                "routing_source": "openai_langgraph",
                 "agent_reason": reason[:500],
             }
         except Exception as exc:
@@ -130,7 +130,7 @@ class LangGraphAgent:
                 "selected_tool": selected_tool,
                 "tool_args": {},
                 "routing_source": "rule_based_fallback",
-                "agent_reason": "Azure Foundry routing failed, so NexusHub used the local fallback router.",
+                "agent_reason": "OpenAI routing failed, so NexusHub used the local fallback router.",
             }
 
     async def _call_selected_tool(self, state: AgentState) -> dict[str, Any]:
