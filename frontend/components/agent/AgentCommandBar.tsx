@@ -14,7 +14,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-export function AgentCommandBar({ streaming = false }: { streaming?: boolean }) {
+export function AgentCommandBar({ streaming = false, placeholder }: { streaming?: boolean, placeholder?: string }) {
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
@@ -37,15 +37,15 @@ export function AgentCommandBar({ streaming = false }: { streaming?: boolean }) 
         <Sparkles className="h-5 w-5" />
       </div>
       <form onSubmit={handleSubmit(onSubmit)} className="flex-1 flex items-center gap-2">
-        <Input 
-          {...register("command")} 
-          placeholder="Ask NexusHub to find emails, schedule meetings, or draft reports..." 
+        <Input
+          {...register("command")}
+          placeholder={placeholder || "Ask NexusHub to find emails, schedule meetings, or draft reports..."}
           className="border-0 focus-visible:ring-0 shadow-none text-base"
           disabled={isSubmitting || sendAgentMessage.isPending}
         />
-        <Button 
-          type="submit" 
-          size="icon" 
+        <Button
+          type="submit"
+          size="icon"
           disabled={isSubmitting || sendAgentMessage.isPending}
           className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
         >
