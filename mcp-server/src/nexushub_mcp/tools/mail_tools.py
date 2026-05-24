@@ -232,26 +232,37 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
                 "hasOriginalMessageId": bool(originalMessageId),
             },
         )
-        preview = _draft_reply(
-            to=primary_recipient,
-            subject=subject,
-            context=context,
-            tone=tone,
-            intent=intent,
-        )
-        payload = {
-            "to": recipients,
-            "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
-            "body": preview,
-            "tone": tone,
-            "intent": intent,
-            "originalMessageId": originalMessageId,
-        }
         if runtime.settings.mode == "graph":
             missing = ensure_user_id(runtime.settings.mode, user_id)
             if missing:
                 return missing
             try:
+                draft = await runtime.backend_client.generate_mail_draft_reply(
+                    user_id=user_id or "",
+                    workspace_id=workspace_id,
+                    message_id=originalMessageId,
+                    subject=subject,
+                    from_email=primary_recipient,
+                    to=[],
+                    body_preview=context,
+                    body=context,
+                    mailbox_email="",
+                    tone=tone,
+                    user_intent=intent,
+                )
+                draft_data = draft.get("data") or draft
+                preview = str(draft_data.get("draftBody") or "")
+                payload = {
+                    "to": recipients,
+                    "subject": draft_data.get("draftSubject")
+                    or (subject if subject.lower().startswith("re:") else f"Re: {subject}"),
+                    "body": preview,
+                    "tone": tone,
+                    "intent": intent,
+                    "originalMessageId": originalMessageId,
+                    "rationale": draft_data.get("rationale"),
+                    "confidence": draft_data.get("confidence"),
+                }
                 created = await runtime.backend_client.create_approval(
                     user_id=user_id or "",
                     workspace_id=workspace_id,
@@ -283,6 +294,21 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
                 approval_id=approval_id,
             )
 
+        preview = _draft_reply(
+            to=primary_recipient,
+            subject=subject,
+            context=context,
+            tone=tone,
+            intent=intent,
+        )
+        payload = {
+            "to": recipients,
+            "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
+            "body": preview,
+            "tone": tone,
+            "intent": intent,
+            "originalMessageId": originalMessageId,
+        }
         record = runtime.approval_store.create(
             action_type="mail.create_draft_reply",
             title=f"Draft reply to {primary_recipient}",
@@ -382,6 +408,9 @@ def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
         "senderEmail": _sender_email(message),
         "subject": message.get("subject"),
         "preview": message.get("bodyPreview"),
+        "body": _body_content(message),
+        "to": _recipient_emails(message),
+        "webLink": message.get("webLink"),
         "receivedAt": message.get("receivedDateTime"),
         "reason": ", ".join(reasons),
         "urgency": urgency,
@@ -399,6 +428,27 @@ def _sender_email(message: dict[str, Any]) -> str | None:
     email = from_block.get("emailAddress") or {}
     address = email.get("address")
     return str(address) if address else None
+
+
+def _recipient_emails(message: dict[str, Any]) -> list[str]:
+    recipients = message.get("toRecipients")
+    if not isinstance(recipients, list):
+        return []
+    values: list[str] = []
+    for recipient in recipients:
+        if not isinstance(recipient, dict):
+            continue
+        email = recipient.get("emailAddress")
+        if isinstance(email, dict) and email.get("address"):
+            values.append(str(email["address"]))
+    return values
+
+
+def _body_content(message: dict[str, Any]) -> str | None:
+    body = message.get("body")
+    if isinstance(body, dict) and body.get("content"):
+        return str(body["content"])
+    return None
 
 
 def _draft_reply(*, to: str, subject: str, context: str, tone: Tone, intent: str | None) -> str:

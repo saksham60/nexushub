@@ -31,3 +31,11 @@ class ForbiddenError(NexusHubError):
 
 class ConfigurationError(NexusHubError):
     code = "configuration_error"
+
+
+class LLMUnavailableError(NexusHubError):
+    code = "LLM_UNAVAILABLE"
+
+
+class InsufficientEmailContextError(NexusHubError):
+    code = "INSUFFICIENT_EMAIL_CONTEXT"

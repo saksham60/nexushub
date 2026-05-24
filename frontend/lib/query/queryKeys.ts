@@ -14,6 +14,9 @@ export const queryKeys = {
     result: (toolName: string, params?: Record<string, any>) => 
       ["agent-result", toolName, params] as const,
   },
+  commandCenter: {
+    feed: () => ["command-center", "feed"] as const,
+  },
   uploads: {
     list: () => ["uploads", "list"] as const,
   }

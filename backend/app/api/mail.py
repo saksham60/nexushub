@@ -2,19 +2,66 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.core.errors import (
     AuthenticationRequiredError,
     ConsentRequiredError,
     GraphServiceError,
+    InsufficientEmailContextError,
+    LLMUnavailableError,
     NexusHubError,
 )
-from app.models.schemas import MailDraftCreateRequest, MailDraftPreviewRequest
+from app.core.security import verify_internal_service_token
+from app.models.schemas import (
+    MailDraftCreateRequest,
+    MailDraftPreviewRequest,
+    MailDraftReplyRequest,
+)
 from app.services.approval_service import ApprovalService
+from app.services.mail_draft_generation_service import MailDraftGenerationService
 from app.services.mcp_client import call_tool
 
 router = APIRouter(prefix="/mail", tags=["mail"])
+internal_router = APIRouter(
+    prefix="/internal/mail", dependencies=[Depends(verify_internal_service_token)]
+)
+
+
+@router.post("/draft-reply", response_model=None)
+async def draft_reply(payload: MailDraftReplyRequest):
+    return await _generate_draft_reply(payload)
+
+
+@internal_router.post("/draft-reply", response_model=None)
+async def internal_draft_reply(payload: MailDraftReplyRequest):
+    return await _generate_draft_reply(payload)
+
+
+async def _generate_draft_reply(payload: MailDraftReplyRequest):
+    try:
+        return await MailDraftGenerationService().generate(
+            {
+                "messageId": payload.messageId,
+                "subject": payload.subject,
+                "from": payload.from_email,
+                "to": payload.to,
+                "bodyPreview": payload.bodyPreview,
+                "body": payload.body,
+                "mailboxEmail": payload.mailboxEmail,
+                "tone": payload.tone,
+                "userIntent": payload.userIntent,
+            }
+        )
+    except InsufficientEmailContextError as exc:
+        return _draft_error("INSUFFICIENT_EMAIL_CONTEXT", exc.message, 400)
+    except LLMUnavailableError as exc:
+        return _draft_error("LLM_UNAVAILABLE", exc.message, 503)
+    except NexusHubError as exc:
+        return _draft_error("UNKNOWN_ERROR", exc.message, 500)
+    except Exception:
+        return _draft_error("UNKNOWN_ERROR", "Could not generate draft. Please try again.", 500)
 
 
 @router.post("/drafts/preview")
@@ -130,4 +177,11 @@ def _http_error(exc: NexusHubError) -> HTTPException:
     return HTTPException(
         status_code=status_code,
         detail={"code": exc.code, "message": exc.message},
+    )
+
+
+def _draft_error(code: str, message: str, status_code: int) -> JSONResponse:
+    return JSONResponse(
+        {"error": True, "code": code, "message": message},
+        status_code=status_code,
     )

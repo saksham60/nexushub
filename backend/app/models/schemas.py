@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserWorkspaceRequest(BaseModel):
@@ -61,3 +61,17 @@ class MailDraftCreateRequest(UserWorkspaceRequest):
     recipients: list[str] = Field(default_factory=list)
     approval_id: str | None = None
     simulate: bool = False
+
+
+class MailDraftReplyRequest(UserWorkspaceRequest):
+    messageId: str
+    subject: str
+    from_email: str = Field(alias="from")
+    to: list[str] = Field(default_factory=list)
+    bodyPreview: str = ""
+    body: str = ""
+    mailboxEmail: str = ""
+    tone: str = "professional"
+    userIntent: str = "draft a concise executive reply"
+
+    model_config = ConfigDict(populate_by_name=True)

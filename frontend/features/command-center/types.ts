@@ -14,3 +14,24 @@ export type ActionItem = {
   metadata?: Record<string, unknown>;
   originalItem?: any;
 };
+
+export type CommandCenterFeedHealth = {
+  backend: "ok" | "error";
+  mcp: "ok" | "partial" | "error";
+  microsoft: "connected" | "disconnected" | "error";
+};
+
+export type CommandCenterFeedCounts = {
+  repliesNeeded: number;
+  meetingsToday: number;
+  approvalsPending: number;
+  filesToReview: number;
+};
+
+export type CommandCenterFeedResponse = {
+  mailboxEmail: string | null;
+  health: CommandCenterFeedHealth;
+  counts: CommandCenterFeedCounts;
+  items: ActionItem[];
+  errors?: Record<string, string>;
+};

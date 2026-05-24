@@ -49,3 +49,23 @@ export type DraftCreateResponse = {
   simulated?: boolean;
   approvalId: string;
 };
+
+export type DraftReplyRequest = {
+  messageId: string;
+  subject: string;
+  from: string;
+  to: string[];
+  bodyPreview: string;
+  body: string;
+  mailboxEmail: string;
+  tone?: "professional" | "concise" | "friendly";
+  userIntent?: string;
+};
+
+export type DraftReplyResponse = {
+  draftSubject: string;
+  draftBody: string;
+  rationale: string;
+  confidence: number;
+  requiresApproval: boolean;
+};

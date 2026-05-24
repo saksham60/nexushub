@@ -32,6 +32,10 @@ export function getFriendlyErrorMessage(error: any): string {
         return "Connect Microsoft 365 to unlock Outlook, Calendar, and OneDrive data.";
       case "consent_required":
         return "Mail.ReadWrite permission is missing. Reconnect Microsoft 365 and approve Mail.ReadWrite.";
+      case "LLM_UNAVAILABLE":
+        return "Could not generate draft.";
+      case "INSUFFICIENT_EMAIL_CONTEXT":
+        return "This email does not have enough context for a safe draft.";
       case "graph_error":
         return "Microsoft Graph is not responding. Your in-app draft was kept.";
       case "mcp_unreachable":

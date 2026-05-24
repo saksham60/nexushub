@@ -7,6 +7,7 @@ from app.api import (
     agent,
     approvals,
     auth_microsoft,
+    command_center,
     health,
     internal_approvals,
     internal_graph,
@@ -31,8 +32,10 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth_microsoft.router)
 app.include_router(agent.router)
+app.include_router(command_center.router)
 app.include_router(mail.router)
 app.include_router(mail.router, prefix="/api")
+app.include_router(mail.internal_router)
 app.include_router(approvals.router)
 app.include_router(internal_graph.router)
 app.include_router(internal_approvals.router)

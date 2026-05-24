@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, Calendar, Check, ExternalLink } from "lucide-react";
 import { useApproveAction } from "@/features/approvals/hooks";
-import { useCreateDraftPreview, useCreateOutlookDraft } from "@/features/mail/hooks";
-import { DraftCreateResponse, DraftPreviewResponse } from "@/features/mail/types";
+import { useGenerateDraftReply } from "@/features/mail/hooks";
+import { DraftCreateResponse, DraftReplyResponse } from "@/features/mail/types";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 
 interface DecisionPanelProps {
@@ -16,11 +16,10 @@ interface DecisionPanelProps {
 
 export function DecisionPanel({ item }: DecisionPanelProps) {
   const approveAction = useApproveAction();
-  const createDraftPreview = useCreateDraftPreview();
-  const createOutlookDraft = useCreateOutlookDraft();
+  const generateDraftReply = useGenerateDraftReply();
   const [draftState, setDraftState] = useState<{
     itemId: string;
-    preview: DraftPreviewResponse;
+    preview: DraftReplyResponse;
     body: string;
   } | null>(null);
   const [draftErrorState, setDraftErrorState] = useState<{ itemId: string; message: string } | null>(null);
@@ -34,13 +33,13 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const draftError = item && draftErrorState?.itemId === item.id ? draftErrorState.message : null;
   const createdDraft = item && createdDraftState?.itemId === item.id ? createdDraftState.draft : null;
 
-  const emailDraftPreview = item?.type === "approval" && item.originalItem?.preview?.kind === "email_draft"
-    ? item.originalItem.preview
+  const emailDraftPreview = item?.type === "approval" && (item.metadata as any)?.preview?.kind === "email_draft"
+    ? (item.metadata as any).preview
     : null;
 
   const emailRecipients = useMemo(() => {
     if (!item || item.type !== "email") return [];
-    const email = item.originalItem?.from?.email;
+    const email = (item.metadata as any)?.from;
     return email && String(email).includes("@") ? [String(email)] : [];
   }, [item]);
 
@@ -65,34 +64,24 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     setDraftErrorState(null);
     setCreatedDraftState(null);
     try {
-      const preview = await createDraftPreview.mutateAsync({
-        original_message_id: item.originalItem?.id || item.id.replace(/^mail_/, ""),
-        subject: item.title,
-        recipients: emailRecipients,
-        context: item.description || item.originalItem?.preview || "",
+      const metadata = (item.metadata || {}) as Record<string, any>;
+      const preview = await generateDraftReply.mutateAsync({
+        messageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
+        subject: String(metadata.subject || item.title),
+        from: String(metadata.from || emailRecipients[0]),
+        to: Array.isArray(metadata.to) ? metadata.to.map(String) : [],
+        bodyPreview: String(metadata.bodyPreview || item.description || ""),
+        body: String(metadata.body || metadata.bodyPreview || item.description || ""),
+        mailboxEmail: String(metadata.mailboxEmail || ""),
         tone: "professional",
-        intent: "replying with the requested input",
+        userIntent: "draft a concise executive reply",
       });
       setDraftState({ itemId: item.id, preview, body: preview.draftBody });
-    } catch (error) {
-      setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
-    }
-  };
-
-  const approveAndCreateDraft = async () => {
-    if (!draft) return;
-    setDraftErrorState(null);
-    try {
-      const result = await createOutlookDraft.mutateAsync({
-        approval_id: draft.approvalId,
-        original_message_id: draft.originalMessageId,
-        subject: draft.subject,
-        recipients: draft.recipients,
-        draft_body: draftBody,
+    } catch {
+      setDraftErrorState({
+        itemId: item.id,
+        message: "Could not generate draft. Please try again.",
       });
-      setCreatedDraftState({ itemId: item.id, draft: result });
-    } catch (error) {
-      setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
     }
   };
 
@@ -131,19 +120,19 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   };
 
   const primaryLabel = () => {
-    if (item.type === "email" && draft) return "Approve & Create Outlook Draft";
+    if (item.type === "email" && draft) return "Approval Required";
     if (item.type === "email") return "Draft Reply";
-    if (item.type === "approval" && item.originalItem?.action_type === "mail.create_draft_reply") {
+    if (item.type === "approval" && (item.metadata as any)?.action_type === "mail.create_draft_reply") {
       return "Create Outlook Draft";
     }
     return item.primaryActionLabel;
   };
 
   const primaryDisabled =
-    createDraftPreview.isPending ||
-    createOutlookDraft.isPending ||
+    generateDraftReply.isPending ||
     approveAction.isPending ||
-    Boolean(createdDraft);
+    Boolean(createdDraft) ||
+    (item.type === "email" && Boolean(draft));
 
   return (
     <div className="h-full flex flex-col bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden sticky top-24">
@@ -203,11 +192,11 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
             <div className="flex items-center gap-2 text-sm text-zinc-700 mb-1">
               <Calendar className="h-4 w-4" /> {item.timeLabel}
             </div>
-            {item.originalItem?.preparation_notes?.length > 0 && (
+            {(item.metadata as any)?.preparation_notes?.length > 0 && (
               <div className="mt-3">
                 <p className="text-sm font-medium text-zinc-800 mb-1">Preparation Notes:</p>
                 <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600">
-                  {item.originalItem.preparation_notes.map((note: string, idx: number) => (
+                  {(item.metadata as any).preparation_notes.map((note: string, idx: number) => (
                     <li key={idx}>{note}</li>
                   ))}
                 </ul>
@@ -216,16 +205,21 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           </div>
         )}
 
-        {item.type === "email" && item.originalItem?.reason && (
+        {item.type === "email" && (item.metadata as any)?.reason && (
           <div>
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Why this matters</h3>
-            <p className="text-sm text-zinc-700">{item.originalItem.reason}</p>
+            <p className="text-sm text-zinc-700">{(item.metadata as any).reason}</p>
           </div>
         )}
 
         {draft && (
           <div>
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Draft Preview</h3>
+            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+              <p className="font-medium">{draft.draftSubject}</p>
+              <p className="mt-1 text-xs">{draft.rationale}</p>
+              {draft.requiresApproval && <p className="mt-1 text-xs font-medium">Approval required before any Outlook draft is created.</p>}
+            </div>
             <Textarea
               value={draftBody}
               onChange={(event) =>
@@ -254,15 +248,15 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           <Button
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             size="lg"
-            onClick={draft ? approveAndCreateDraft : handleAction}
+            onClick={handleAction}
             disabled={primaryDisabled}
           >
             <Check className="h-4 w-4 mr-2" />
             {createdDraft
               ? "Draft Created"
-              : createDraftPreview.isPending
+              : generateDraftReply.isPending
                 ? "Generating..."
-                : createOutlookDraft.isPending || approveAction.isPending
+                : approveAction.isPending
                   ? "Creating..."
                   : primaryLabel()}
           </Button>

@@ -81,6 +81,15 @@ async function fetchWithAuth<T>(endpoint: string, options: RequestInit): Promise
       if (data && data.status === "error") {
         throw new ApiError(data as ApiErrorResponse);
       }
+      if (data && data.error === true && data.code && data.message) {
+        throw new ApiError({
+          status: "error",
+          error: {
+            code: data.code,
+            message: data.message,
+          },
+        });
+      }
       
       // Fallback for non-standard errors
       const detail = data?.detail;

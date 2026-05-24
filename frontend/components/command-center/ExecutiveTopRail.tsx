@@ -22,19 +22,17 @@ import {
 import { MicrosoftConnectionCard } from "@/components/settings/MicrosoftConnectionCard";
 import { AgentPreferencesCard } from "@/components/settings/AgentPreferencesCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
-import { useBackendHealth } from "@/features/health/hooks";
-import { useMicrosoftStatus } from "@/features/auth/hooks";
+import { useCommandCenterFeed } from "@/features/command-center/hooks/useActionQueue";
 
 export function ExecutiveTopRail() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { data: session } = useSession();
-  const { data: health, isError: healthError } = useBackendHealth();
-  const { data: microsoftStatus } = useMicrosoftStatus();
+  const { data: feed, isError: feedError } = useCommandCenterFeed();
   const userName = session?.status === "ok" ? session.user.display_name : "User";
   const initials = userName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-  const mcpStatus = health?.dependencies.mcp?.status;
-  const platformOk = !healthError && health?.status === "ok" && mcpStatus === "ok";
-  const mailboxEmail = microsoftStatus?.connected ? microsoftStatus.email : null;
+  const platformOk = !feedError && feed?.health.backend === "ok" && feed.health.mcp === "ok";
+  const mailboxEmail = feed?.mailboxEmail || null;
+  const microsoftConnected = feed?.health.microsoft === "connected";
 
   return (
     <>
@@ -58,7 +56,7 @@ export function ExecutiveTopRail() {
             </div>
 
             <div className={`hidden lg:flex items-center gap-2 border px-3 py-1 rounded-full min-w-0 ${
-              microsoftStatus?.connected ? "bg-blue-50 border-blue-100 text-blue-800" : "bg-amber-50 border-amber-100 text-amber-800"
+              microsoftConnected ? "bg-blue-50 border-blue-100 text-blue-800" : "bg-amber-50 border-amber-100 text-amber-800"
             }`}>
               <Mail className="h-3.5 w-3.5 shrink-0" />
               <span className="text-xs font-medium truncate max-w-72">

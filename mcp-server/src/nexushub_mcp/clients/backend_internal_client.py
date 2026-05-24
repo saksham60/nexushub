@@ -94,6 +94,38 @@ class BackendInternalClient:
             },
         )
 
+    async def generate_mail_draft_reply(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        message_id: str | None,
+        subject: str,
+        from_email: str,
+        to: list[str],
+        body_preview: str,
+        body: str,
+        mailbox_email: str,
+        tone: str,
+        user_intent: str | None,
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/internal/mail/draft-reply",
+            {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "messageId": message_id or "",
+                "subject": subject,
+                "from": from_email,
+                "to": to,
+                "bodyPreview": body_preview,
+                "body": body,
+                "mailboxEmail": mailbox_email,
+                "tone": tone,
+                "userIntent": user_intent or "draft a concise executive reply",
+            },
+        )
+
     async def execute_approval(
         self, *, user_id: str, approval_id: str, approved: bool
     ) -> dict[str, Any]:

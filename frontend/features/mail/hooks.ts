@@ -9,7 +9,19 @@ import {
   DraftCreateResponse,
   DraftPreviewRequest,
   DraftPreviewResponse,
+  DraftReplyRequest,
+  DraftReplyResponse,
 } from "./types";
+
+export function useGenerateDraftReply() {
+  return useMutation({
+    mutationFn: (payload: DraftReplyRequest) =>
+      apiClient.post<DraftReplyResponse>(endpoints.mailDraftReply, {
+        ...getRequestIdentity(),
+        ...payload,
+      }),
+  });
+}
 
 export function useCreateDraftPreview() {
   const queryClient = useQueryClient();

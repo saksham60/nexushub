@@ -1,18 +1,19 @@
 "use client";
 
-import { ActionItem } from "@/features/command-center/types";
+import { ActionItem, CommandCenterFeedCounts } from "@/features/command-center/types";
 import { Mail, Calendar, FileText, CheckSquare, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 interface ExecutiveSnapshotStripProps {
   items: ActionItem[];
+  counts?: CommandCenterFeedCounts;
 }
 
-export function ExecutiveSnapshotStrip({ items }: ExecutiveSnapshotStripProps) {
-  const emailCount = items.filter(i => i.type === "email").length;
-  const meetingCount = items.filter(i => i.type === "calendar").length;
-  const approvalCount = items.filter(i => i.type === "approval").length;
-  const docCount = items.filter(i => i.type === "document").length;
+export function ExecutiveSnapshotStrip({ items, counts }: ExecutiveSnapshotStripProps) {
+  const emailCount = counts?.repliesNeeded ?? items.filter(i => i.type === "email").length;
+  const meetingCount = counts?.meetingsToday ?? items.filter(i => i.type === "calendar").length;
+  const approvalCount = counts?.approvalsPending ?? items.filter(i => i.type === "approval").length;
+  const docCount = counts?.filesToReview ?? items.filter(i => i.type === "document").length;
   const suggestionCount = 3; // Placeholder for AI suggestions logic if needed
 
   const stats = [

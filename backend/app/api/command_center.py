@@ -1,0 +1,314 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+from typing import Any
+
+from fastapi import APIRouter, Query
+
+from app.core.errors import NexusHubError
+from app.services.approval_service import ApprovalService
+from app.services.mcp_client import call_tool, get_mcp_health
+from app.services.microsoft_connection_service import MicrosoftConnectionService
+
+router = APIRouter(prefix="/api/command-center", tags=["command-center"])
+
+
+@router.get("/feed")
+async def feed(
+    user_id: str = Query(...), workspace_id: str | None = None
+) -> dict[str, Any]:
+    mailbox_email: str | None = None
+    source_errors: dict[str, str] = {}
+    items: list[dict[str, Any]] = []
+    health = {"backend": "ok", "mcp": "ok", "microsoft": "connected"}
+
+    try:
+        mcp_payload = await get_mcp_health()
+        if str(mcp_payload.get("status") or "") != "ok":
+            health["mcp"] = "error"
+            source_errors["mcp"] = "MCP health check did not return ok."
+    except Exception as exc:
+        health["mcp"] = "error"
+        source_errors["mcp"] = str(exc)
+
+    microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)
+    if not microsoft_status.get("connected"):
+        health["microsoft"] = "disconnected"
+        return _feed_response(
+            mailbox_email=None,
+            health=health,
+            items=[],
+            source_errors=source_errors,
+        )
+
+    mailbox_email = str(microsoft_status.get("email") or "")
+
+    results = await asyncio.gather(
+        _safe_tool(
+            "mail",
+            "mail_find_needs_reply",
+            {"user_id": user_id, "workspace_id": workspace_id, "maxResults": 10},
+        ),
+        _safe_tool(
+            "calendar",
+            "calendar_get_today_agenda",
+            {"user_id": user_id, "workspace_id": workspace_id},
+        ),
+        _safe_tool(
+            "documents",
+            "docs_list_recent_files",
+            {"user_id": user_id, "workspace_id": workspace_id, "maxResults": 10},
+        ),
+        _safe_approvals(user_id=user_id, workspace_id=workspace_id),
+    )
+
+    for source, payload, error in results:
+        if error:
+            source_errors[source] = error
+            if source in {"mail", "calendar", "documents"}:
+                health["mcp"] = "error" if health["mcp"] != "ok" else "partial"
+            continue
+        if source == "mail":
+            items.extend(_mail_items(payload, mailbox_email=mailbox_email))
+        elif source == "calendar":
+            items.extend(_calendar_items(payload))
+        elif source == "documents":
+            items.extend(_document_items(payload))
+        elif source == "approvals":
+            items.extend(_approval_items(payload))
+
+    if any("Microsoft 365" in error or "authentication" in error.lower() for error in source_errors.values()):
+        health["microsoft"] = "error"
+
+    return _feed_response(
+        mailbox_email=mailbox_email,
+        health=health,
+        items=items,
+        source_errors=source_errors,
+    )
+
+
+async def _safe_tool(
+    source: str, tool_name: str, arguments: dict[str, Any]
+) -> tuple[str, dict[str, Any], str | None]:
+    try:
+        result = await call_tool(tool_name, arguments)
+        tool_result = result.get("result") if isinstance(result, dict) else result
+        if not isinstance(tool_result, dict):
+            return source, {}, "MCP returned an invalid response."
+        if tool_result.get("status") == "authentication_required":
+            return source, {}, str(tool_result.get("message") or "Microsoft 365 authentication is required.")
+        if tool_result.get("ok") is False:
+            error = tool_result.get("error") or {}
+            return source, {}, str(error.get("message") or "MCP tool call failed.")
+        return source, tool_result.get("data") or tool_result, None
+    except Exception as exc:
+        return source, {}, str(exc)
+
+
+async def _safe_approvals(
+    *, user_id: str, workspace_id: str | None
+) -> tuple[str, dict[str, Any], str | None]:
+    try:
+        return (
+            "approvals",
+            ApprovalService().list_pending(
+                user_id=user_id, workspace_id=workspace_id, max_results=20
+            ),
+            None,
+        )
+    except NexusHubError as exc:
+        return "approvals", {}, exc.message
+    except Exception as exc:
+        return "approvals", {}, str(exc)
+
+
+def _feed_response(
+    *,
+    mailbox_email: str | None,
+    health: dict[str, str],
+    items: list[dict[str, Any]],
+    source_errors: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "mailboxEmail": mailbox_email,
+        "health": health,
+        "counts": {
+            "repliesNeeded": sum(1 for item in items if item["type"] == "email"),
+            "meetingsToday": sum(1 for item in items if item["type"] == "calendar"),
+            "approvalsPending": sum(1 for item in items if item["type"] == "approval"),
+            "filesToReview": sum(1 for item in items if item["type"] == "document"),
+        },
+        "items": items,
+        "errors": source_errors,
+    }
+
+
+def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str, Any]]:
+    groups = payload.get("groups") if isinstance(payload.get("groups"), list) else []
+    action_items: list[dict[str, Any]] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for item in group.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            message_id = str(item.get("messageId") or "")
+            if not message_id:
+                continue
+            subject = str(item.get("subject") or "(No subject)")
+            sender_email = str(item.get("senderEmail") or item.get("sender") or "")
+            received_at = item.get("receivedAt")
+            action_items.append(
+                {
+                    "id": f"mail_{message_id}",
+                    "type": "email",
+                    "title": subject,
+                    "description": item.get("preview") or "",
+                    "source": "Outlook",
+                    "person": item.get("sender") or sender_email,
+                    "timeLabel": _date_label(received_at),
+                    "priority": _priority(item.get("urgency")),
+                    "status": "new",
+                    "primaryActionLabel": "Draft Reply",
+                    "metadata": {
+                        "messageId": message_id,
+                        "conversationId": item.get("threadId"),
+                        "subject": subject,
+                        "from": sender_email,
+                        "to": item.get("to") or [],
+                        "receivedDateTime": received_at,
+                        "bodyPreview": item.get("preview") or "",
+                        "body": item.get("body") or "",
+                        "webLink": item.get("webLink"),
+                        "mailboxEmail": mailbox_email,
+                        "reason": item.get("reason"),
+                    },
+                }
+            )
+    return action_items
+
+
+def _calendar_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_events = payload.get("value")
+    if not isinstance(raw_events, list):
+        raw_events = payload.get("meetings") if isinstance(payload.get("meetings"), list) else []
+    items: list[dict[str, Any]] = []
+    for event in raw_events:
+        if not isinstance(event, dict):
+            continue
+        event_id = str(event.get("id") or event.get("eventId") or "")
+        subject = str(event.get("subject") or event.get("title") or "(Untitled event)")
+        start = _date_value(event.get("start"))
+        organizer = event.get("organizer")
+        items.append(
+            {
+                "id": f"cal_{event_id or subject}",
+                "type": "calendar",
+                "title": subject,
+                "description": _location_label(event.get("location")),
+                "source": "Calendar",
+                "person": _organizer_label(organizer),
+                "timeLabel": _time_label(start),
+                "priority": "high",
+                "status": "pending",
+                "primaryActionLabel": "Prepare",
+                "metadata": event,
+            }
+        )
+    return items
+
+
+def _document_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_files = payload.get("value")
+    if not isinstance(raw_files, list):
+        raw_files = payload.get("items") if isinstance(payload.get("items"), list) else []
+    items: list[dict[str, Any]] = []
+    for file in raw_files:
+        if not isinstance(file, dict):
+            continue
+        file_id = str(file.get("id") or file.get("fileId") or "")
+        name = str(file.get("name") or "(Untitled file)")
+        size = file.get("size") or file.get("sizeBytes") or 0
+        items.append(
+            {
+                "id": f"doc_{file_id or name}",
+                "type": "document",
+                "title": name,
+                "description": f"{round(int(size or 0) / 1000)} KB",
+                "source": "OneDrive",
+                "priority": "low",
+                "status": "new",
+                "primaryActionLabel": "Summarize",
+                "metadata": file,
+            }
+        )
+    return items
+
+
+def _approval_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = payload.get("items") if isinstance(payload.get("items"), list) else []
+    items: list[dict[str, Any]] = []
+    for approval in rows:
+        if not isinstance(approval, dict):
+            continue
+        preview = approval.get("preview") if isinstance(approval.get("preview"), dict) else {}
+        action_type = str(approval.get("action_type") or "approval.required")
+        title = preview.get("title") or ("Draft Email" if preview.get("kind") == "email_draft" else action_type)
+        items.append(
+            {
+                "id": f"app_{approval.get('id')}",
+                "type": "approval",
+                "title": title,
+                "description": preview.get("body_preview") or preview.get("description") or "Pending approval request",
+                "source": "NexusHub",
+                "priority": "high",
+                "status": "pending",
+                "primaryActionLabel": "Create Draft" if action_type == "mail.create_draft_reply" else "Review",
+                "metadata": approval,
+            }
+        )
+    return items
+
+
+def _priority(value: Any) -> str:
+    return str(value) if value in {"high", "medium", "low"} else "medium"
+
+
+def _date_label(value: Any) -> str | None:
+    parsed = _parse_date(value)
+    return parsed.date().isoformat() if parsed else None
+
+
+def _time_label(value: Any) -> str | None:
+    parsed = _parse_date(value)
+    return parsed.strftime("%H:%M") if parsed else None
+
+
+def _date_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value.get("dateTime")
+    return value
+
+
+def _parse_date(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _location_label(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("displayName") or "")
+    return str(value or "")
+
+
+def _organizer_label(value: Any) -> str | None:
+    if isinstance(value, dict):
+        email = value.get("emailAddress") if isinstance(value.get("emailAddress"), dict) else {}
+        return email.get("name") or email.get("address")
+    return str(value) if value else None

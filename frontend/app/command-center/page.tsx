@@ -8,19 +8,18 @@ import { PriorityWorkFeed } from "@/components/command-center/PriorityWorkFeed";
 import { DecisionPanel } from "@/components/command-center/DecisionPanel";
 import { CommandCenterActionHub } from "@/components/command-center/CommandCenterActionHub";
 import { AlertCircle } from "lucide-react";
-import { useBackendHealth } from "@/features/health/hooks";
-import { useMicrosoftStatus } from "@/features/auth/hooks";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
 
 export default function CommandCenterPage() {
   const [agentResponse, setAgentResponse] = useState<AgentChatResponse | null>(null);
   const sendAgentMessage = useSendAgentMessage();
-  const health = useBackendHealth();
-  const microsoftStatus = useMicrosoftStatus();
   const { 
     items, 
     filteredItems, 
+    counts,
+    health,
+    sourceErrors,
     isLoading, 
     isError, 
     errorMessage,
@@ -30,10 +29,10 @@ export default function CommandCenterPage() {
     setSelectedItem 
   } = useActionQueue();
   const statusBanner = getStatusBanner({
-    backendUnavailable: health.isError,
-    mcpStatus: health.data?.dependencies.mcp?.status,
-    mcpError: health.data?.dependencies.mcp?.error?.message,
-    microsoftConnected: microsoftStatus.data?.connected,
+    backendUnavailable: !health && isError,
+    mcpStatus: health?.mcp,
+    mcpError: sourceErrors.mcp,
+    microsoftStatus: health?.microsoft,
     activityError: isError ? errorMessage : null,
   });
 
@@ -60,7 +59,7 @@ export default function CommandCenterPage() {
 
       <CommandCenterActionHub onRunPrompt={runPrompt} />
       
-      <ExecutiveSnapshotStrip items={items} />
+      <ExecutiveSnapshotStrip items={items} counts={counts} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
         <div className="lg:col-span-8 flex flex-col gap-8">
@@ -90,13 +89,13 @@ function getStatusBanner({
   backendUnavailable,
   mcpStatus,
   mcpError,
-  microsoftConnected,
+  microsoftStatus,
   activityError,
 }: {
   backendUnavailable: boolean;
   mcpStatus?: string;
   mcpError?: string;
-  microsoftConnected?: boolean;
+  microsoftStatus?: string;
   activityError?: string | null;
 }) {
   if (backendUnavailable) {
@@ -111,10 +110,16 @@ function getStatusBanner({
       message: `MCP is ${mcpStatus}. ${mcpError || "Backend cannot reach the MCP health API."}`,
     };
   }
-  if (microsoftConnected === false) {
+  if (microsoftStatus === "disconnected") {
     return {
       className: "bg-amber-50 text-amber-800 border-amber-200",
       message: "Microsoft 365 is not connected. Connect an account to load Outlook, Calendar, and OneDrive activity.",
+    };
+  }
+  if (microsoftStatus === "error") {
+    return {
+      className: "bg-red-50 text-red-800 border-red-200",
+      message: "Microsoft Graph activity failed. Check the Microsoft connection and try again.",
     };
   }
   if (activityError) {
