@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 
 from app.config import get_settings
 from app.core.errors import NexusHubError
+from app.core.logging import get_logger
 from app.services.microsoft_connection_service import MicrosoftConnectionService
 from app.services.microsoft_graph_service import GRAPH_BASE_URL
 from app.services.microsoft_oauth_service import MicrosoftOAuthService
@@ -12,6 +13,27 @@ from app.services.microsoft_oauth_service import MicrosoftOAuthService
 import httpx
 
 router = APIRouter(prefix="/auth/microsoft", tags=["auth"])
+logger = get_logger(__name__)
+
+
+def _connection_failed(stage: str, exc: Exception) -> HTTPException:
+    logger.exception(
+        "Microsoft OAuth callback failed.",
+        extra={
+            "metadata": {
+                "stage": stage,
+                "errorType": exc.__class__.__name__,
+            }
+        },
+    )
+    return HTTPException(
+        status_code=400,
+        detail={
+            "code": "microsoft_connection_failed",
+            "message": f"Microsoft connection failed during {stage}.",
+            "stage": stage,
+        },
+    )
 
 
 @router.get("/start")
@@ -49,7 +71,15 @@ async def callback(
     oauth = MicrosoftOAuthService(settings)
     try:
         oauth_state = oauth.consume_state(state)
+    except Exception as exc:
+        raise _connection_failed("state_validation", exc) from exc
+
+    try:
         tokens = await oauth.exchange_code_for_tokens(code)
+    except Exception as exc:
+        raise _connection_failed("token_exchange", exc) from exc
+
+    try:
         async with httpx.AsyncClient(base_url=GRAPH_BASE_URL, timeout=20.0) as client:
             me_response = await client.get(
                 "/me",
@@ -61,6 +91,10 @@ async def callback(
             )
             me_response.raise_for_status()
             profile = me_response.json()
+    except Exception as exc:
+        raise _connection_failed("graph_profile", exc) from exc
+
+    try:
         user_id = MicrosoftConnectionService().save_connection(
             user_id=oauth_state.user_id,
             workspace_id=oauth_state.workspace_id,
@@ -68,13 +102,7 @@ async def callback(
             token_response=tokens,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "microsoft_connection_failed",
-                "message": "Microsoft connection failed.",
-            },
-        ) from exc
+        raise _connection_failed("token_storage", exc) from exc
     return RedirectResponse(
         f"{settings.frontend_url}/settings/integrations?provider=microsoft&status=connected&user_id={user_id}"
     )

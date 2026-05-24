@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.core.errors import ConfigurationError
 from app.core.encryption import encrypt_secret
 from app.db.supabase_client import get_supabase
 
@@ -27,12 +28,22 @@ class MicrosoftConnectionService:
         existing = (
             get_supabase()
             .table("oauth_connections")
-            .select("id")
+            .select("id,refresh_token_encrypted")
             .eq("user_id", final_user_id)
             .eq("provider", "microsoft")
             .limit(1)
             .execute()
         )
+        rows = existing.data or []
+        refresh_token = token_response.get("refresh_token")
+        if refresh_token:
+            refresh_token_encrypted = encrypt_secret(str(refresh_token))
+        elif rows and rows[0].get("refresh_token_encrypted"):
+            refresh_token_encrypted = str(rows[0]["refresh_token_encrypted"])
+        else:
+            raise ConfigurationError(
+                "Microsoft did not return a refresh token. Reconnect and consent to offline_access."
+            )
         record = {
             "user_id": final_user_id,
             "workspace_id": workspace_id,
@@ -44,14 +55,11 @@ class MicrosoftConnectionService:
             "access_token_encrypted": encrypt_secret(
                 str(token_response["access_token"])
             ),
-            "refresh_token_encrypted": encrypt_secret(
-                str(token_response["refresh_token"])
-            ),
+            "refresh_token_encrypted": refresh_token_encrypted,
             "expires_at": expires_at.isoformat(),
             "status": "connected",
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        rows = existing.data or []
         if rows:
             get_supabase().table("oauth_connections").update(record).eq(
                 "id", rows[0]["id"]
