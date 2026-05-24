@@ -25,7 +25,9 @@ class McpClient:
         except httpx.HTTPError as exc:
             raise GraphServiceError("MCP server is unreachable.") from exc
         if response.status_code >= 400:
-            raise GraphServiceError("MCP tool call failed.")
+            raise GraphServiceError(
+                f"MCP tool call failed with status {response.status_code}."
+            )
         payload = response.json()
         return payload if isinstance(payload, dict) else {"result": payload}
 

@@ -8,6 +8,11 @@ from app.services.mcp_client import call_tool
 
 logger = get_logger(__name__)
 
+DIRECT_RESPONSE_MESSAGE = (
+    "Hi. I can help with your Microsoft 365 workspace: mail that needs reply, "
+    "today's agenda, recent files, Teams action items, and pending approvals."
+)
+
 
 class AgentOrchestrator:
     async def chat(
@@ -39,6 +44,17 @@ class AgentOrchestrator:
         self, *, user_id: str, workspace_id: str | None, message: str
     ) -> dict[str, Any]:
         tool_name = self._route(message)
+        if tool_name == "direct_response":
+            return {
+                "type": "agent_response",
+                "tool_used": "direct_response",
+                "data": {
+                    "ok": True,
+                    "source": "agent",
+                    "data": {"message": DIRECT_RESPONSE_MESSAGE},
+                },
+                "agent": {"mode": "rule_based"},
+            }
         arguments = {"user_id": user_id, "workspace_id": workspace_id}
         result = await call_tool(tool_name, arguments)
         tool_result = result.get("result") or result
@@ -61,6 +77,8 @@ class AgentOrchestrator:
 
     def _route(self, message: str) -> str:
         lowered = message.lower()
+        if self._is_greeting_or_smalltalk(lowered):
+            return "direct_response"
         if "approval" in lowered:
             return "approval_list_pending"
         if "agenda" in lowered or "calendar" in lowered or "today" in lowered:
@@ -70,3 +88,17 @@ class AgentOrchestrator:
         if "email" in lowered or "mail" in lowered or "reply" in lowered:
             return "mail_find_needs_reply"
         return "mail_find_needs_reply"
+
+    def _is_greeting_or_smalltalk(self, message: str) -> bool:
+        normalized = message.strip().lower().strip(".!?")
+        return normalized in {
+            "hi",
+            "hello",
+            "hey",
+            "hii",
+            "yo",
+            "thanks",
+            "thank you",
+            "what can you do",
+            "help",
+        }

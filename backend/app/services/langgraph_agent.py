@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
+    "direct_response": "Answer greetings, capability questions, or small talk without calling MCP.",
     "auth_get_status": "Check whether Microsoft 365 is connected.",
     "mail_find_needs_reply": "Find Outlook emails likely requiring a reply.",
     "mail_find_awaiting_approval": "Find emails that mention approvals, reviews, contracts, budgets, or invoices.",
@@ -31,6 +32,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 }
 
 TOOL_ARGUMENT_KEYS: dict[str, set[str]] = {
+    "direct_response": {"message"},
     "auth_get_status": set(),
     "mail_find_needs_reply": {"days", "maxResults", "priority"},
     "mail_find_awaiting_approval": {"days", "maxResults"},
@@ -134,6 +136,18 @@ class LangGraphAgent:
             }
 
     async def _call_selected_tool(self, state: AgentState) -> dict[str, Any]:
+        if state["selected_tool"] == "direct_response":
+            message = str(
+                state.get("tool_args", {}).get("message")
+                or "Hi. I can help with your mail, calendar, Teams activity, documents, and pending approvals."
+            )
+            return {
+                "tool_result": {
+                    "ok": True,
+                    "source": "agent",
+                    "data": {"message": message},
+                }
+            }
         arguments = {
             "user_id": state["user_id"],
             "workspace_id": state.get("workspace_id"),
@@ -192,10 +206,11 @@ JSON shape:
 
 Rules:
 - Include only tool-specific arguments. Do not include user_id or workspace_id.
+- For greetings, small talk, or questions about what NexusHub can do, choose direct_response.
 - Prefer read-only tools unless the user clearly asks to prepare a write action.
 - Write tools are approval-gated and must never be described as already executed.
 - Use camelCase argument names exactly as the MCP tools expect.
-- If the request is unclear, choose mail_find_needs_reply."""
+- If the request is unclear but not a greeting, choose auth_get_status."""
 
     def _normalize_tool(self, tool_name: str) -> str:
         if tool_name in TOOL_DESCRIPTIONS:
@@ -226,6 +241,8 @@ Rules:
 
     def _fallback_tool(self, message: str) -> str:
         lowered = message.lower()
+        if _is_greeting_or_smalltalk(lowered):
+            return "direct_response"
         if "approval" in lowered:
             return "approval_list_pending"
         if "agenda" in lowered or "calendar" in lowered or "today" in lowered:
@@ -235,3 +252,18 @@ Rules:
         if "team" in lowered or "mention" in lowered:
             return "teams_get_urgent_mentions"
         return "mail_find_needs_reply"
+
+
+def _is_greeting_or_smalltalk(message: str) -> bool:
+    normalized = message.strip().lower().strip(".!?")
+    return normalized in {
+        "hi",
+        "hello",
+        "hey",
+        "hii",
+        "yo",
+        "thanks",
+        "thank you",
+        "what can you do",
+        "help",
+    }
