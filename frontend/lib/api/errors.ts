@@ -46,7 +46,9 @@ export function getFriendlyErrorMessage(error: any): string {
         return error.message || "This NexusHub feature is disabled.";
       case "graph_error":
       case "GRAPH_ERROR":
-        return "Microsoft Graph is not responding. Your in-app draft was kept.";
+        return error.message
+          ? `Microsoft Graph failed: ${trimTrailingPunctuation(error.message)}. Your in-app draft was kept.`
+          : "Microsoft Graph failed. Your in-app draft was kept.";
       case "mcp_unreachable":
         return "NexusHub MCP is not reachable. Your in-app draft was kept.";
       case "NOT_IMPLEMENTED":
@@ -62,4 +64,8 @@ export function getFriendlyErrorMessage(error: any): string {
     }
   }
   return "An unexpected error occurred.";
+}
+
+function trimTrailingPunctuation(message: string): string {
+  return message.trim().replace(/[.!?]+$/, "");
 }

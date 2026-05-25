@@ -18,6 +18,16 @@ describe('Error Normalizer', () => {
     expect(getFriendlyErrorMessage(error)).toBe("Please sign in.");
   });
 
+  it('preserves Microsoft Graph error details', () => {
+    const error = new ApiError({
+      status: "error",
+      error: { code: "GRAPH_ERROR", message: "The specified object was not found in the store." }
+    });
+    expect(getFriendlyErrorMessage(error)).toBe(
+      "Microsoft Graph failed: The specified object was not found in the store. Your in-app draft was kept."
+    );
+  });
+
   it('falls back to error message', () => {
     const error = new ApiError({
       status: "error",

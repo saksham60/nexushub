@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -114,8 +115,9 @@ class MicrosoftGraphService:
                 base_url=GRAPH_BASE_URL, timeout=20.0
             ) as client:
                 if original_message_id:
+                    original_id_path = _graph_path_segment(original_message_id)
                     created = await client.post(
-                        f"/me/messages/{original_message_id}/createReply",
+                        f"/me/messages/{original_id_path}/createReply",
                         headers=headers,
                     )
                     await self._raise_for_draft_error(created)
@@ -132,7 +134,7 @@ class MicrosoftGraphService:
                         patch_payload["toRecipients"] = message_payload["toRecipients"]
 
                     patched = await client.patch(
-                        f"/me/messages/{draft_id}",
+                        f"/me/messages/{_graph_path_segment(draft_id)}",
                         json=patch_payload,
                         headers={**headers, "Content-Type": "application/json"},
                     )
@@ -169,7 +171,7 @@ class MicrosoftGraphService:
                 base_url=GRAPH_BASE_URL, timeout=20.0
             ) as client:
                 response = await client.post(
-                    f"/me/messages/{draft_id}/send",
+                    f"/me/messages/{_graph_path_segment(draft_id)}/send",
                     headers=headers,
                 )
         except httpx.HTTPError as exc:
@@ -202,7 +204,7 @@ class MicrosoftGraphService:
                 base_url=GRAPH_BASE_URL, timeout=20.0
             ) as client:
                 response = await client.patch(
-                    f"/me/events/{event_id}",
+                    f"/me/events/{_graph_path_segment(event_id)}",
                     json=payload,
                     headers=headers,
                 )
@@ -232,21 +234,16 @@ class MicrosoftGraphService:
         except httpx.HTTPError as exc:
             raise GraphServiceError("Microsoft Graph request failed.") from exc
         if response.status_code >= 400:
-            raise GraphServiceError("Microsoft Graph returned an error.")
+            raise GraphServiceError(
+                _graph_error_message(response, "Microsoft Graph returned an error.")
+            )
         payload = response.json()
         return payload if isinstance(payload, dict) else {"value": payload}
 
     async def _raise_for_draft_error(self, response: httpx.Response) -> None:
         if response.status_code < 400:
             return
-        message = "Microsoft Graph draft creation failed."
-        try:
-            payload = response.json()
-            graph_error = payload.get("error") if isinstance(payload, dict) else None
-            if isinstance(graph_error, dict) and graph_error.get("message"):
-                message = str(graph_error["message"])
-        except ValueError:
-            pass
+        message = _graph_error_message(response, "Microsoft Graph draft creation failed.")
 
         if response.status_code in {401, 403}:
             raise ConsentRequiredError(
@@ -257,14 +254,7 @@ class MicrosoftGraphService:
     async def _raise_for_send_error(self, response: httpx.Response) -> None:
         if response.status_code < 400:
             return
-        message = "Microsoft Graph send failed."
-        try:
-            payload = response.json()
-            graph_error = payload.get("error") if isinstance(payload, dict) else None
-            if isinstance(graph_error, dict) and graph_error.get("message"):
-                message = str(graph_error["message"])
-        except ValueError:
-            pass
+        message = _graph_error_message(response, "Microsoft Graph send failed.")
 
         if response.status_code in {401, 403}:
             raise ConsentRequiredError(
@@ -275,14 +265,7 @@ class MicrosoftGraphService:
     async def _raise_for_calendar_write_error(self, response: httpx.Response) -> None:
         if response.status_code < 400:
             return
-        message = "Microsoft Graph calendar update failed."
-        try:
-            payload = response.json()
-            graph_error = payload.get("error") if isinstance(payload, dict) else None
-            if isinstance(graph_error, dict) and graph_error.get("message"):
-                message = str(graph_error["message"])
-        except ValueError:
-            pass
+        message = _graph_error_message(response, "Microsoft Graph calendar update failed.")
 
         if response.status_code in {401, 403}:
             raise ConsentRequiredError(
@@ -293,3 +276,18 @@ class MicrosoftGraphService:
 
 def _graph_datetime(value: datetime) -> str:
     return value.replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def _graph_path_segment(value: str) -> str:
+    return quote(value, safe="")
+
+
+def _graph_error_message(response: httpx.Response, fallback: str) -> str:
+    try:
+        payload = response.json()
+        graph_error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(graph_error, dict) and graph_error.get("message"):
+            return str(graph_error["message"])
+    except ValueError:
+        pass
+    return fallback
