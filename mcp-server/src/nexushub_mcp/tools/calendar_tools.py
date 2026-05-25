@@ -27,13 +27,6 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         missing = ensure_user_id(runtime.settings.mode, user_id)
         if missing:
             return missing
-        if not eventId:
-            return error(
-                "missing_event_id",
-                "A Microsoft event id is required to create a calendar reschedule approval through MCP.",
-                "Use the NexusHub backend agent command flow so it can resolve the meeting first.",
-                source="microsoft_graph",
-            )
         try:
             data = await runtime.backend_client.get_today_calendar(
                 user_id=user_id or "", workspace_id=workspace_id
@@ -207,6 +200,13 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         missing = ensure_user_id(runtime.settings.mode, user_id)
         if missing:
             return missing
+        if not eventId:
+            return error(
+                "missing_event_id",
+                "A Microsoft event id is required to create a calendar reschedule approval through MCP.",
+                "Use the NexusHub backend agent command flow so it can resolve the meeting first.",
+                source="microsoft_graph",
+            )
         try:
             approval = await runtime.backend_client.create_approval(
                 user_id=user_id or "",

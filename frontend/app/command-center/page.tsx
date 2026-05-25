@@ -33,7 +33,7 @@ export default function CommandCenterPage() {
   const statusBanner = getStatusBanner({
     backendUnavailable: !health && isError,
     mcpStatus: health?.mcp,
-    mcpError: sourceErrors.mcp,
+    mcpError: sourceErrors.mcp || getMcpSourceError(sourceErrors),
     microsoftStatus: health?.microsoft,
     activityError: isError ? errorMessage : null,
   });
@@ -149,8 +149,11 @@ function getStatusBanner({
     };
   }
   if (mcpStatus && mcpStatus !== "ok") {
+    const isPartial = mcpStatus === "partial";
     return {
-      className: "bg-red-50 text-red-800 border-red-200",
+      className: isPartial
+        ? "bg-amber-50 text-amber-800 border-amber-200"
+        : "bg-red-50 text-red-800 border-red-200",
       message: `MCP is ${mcpStatus}. ${mcpError || "Backend cannot reach the MCP health API."}`,
     };
   }
@@ -173,4 +176,14 @@ function getStatusBanner({
     };
   }
   return null;
+}
+
+function getMcpSourceError(sourceErrors: Record<string, string>) {
+  const entries = Object.entries(sourceErrors).filter(([source]) =>
+    ["mail", "calendar", "documents"].includes(source),
+  );
+  if (!entries.length) return undefined;
+  return entries
+    .map(([source, message]) => `${source[0].toUpperCase()}${source.slice(1)} source failed: ${message}`)
+    .join(" ");
 }
