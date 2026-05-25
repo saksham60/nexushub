@@ -10,11 +10,13 @@ import { CommandCenterActionHub } from "@/components/command-center/CommandCente
 import { AlertCircle, ArrowRight, Sparkles } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
+import { useConnectMicrosoft } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
 
 export default function CommandCenterPage() {
   const [agentResponse, setAgentResponse] = useState<AgentChatResponse | null>(null);
   const sendAgentMessage = useSendAgentMessage();
+  const connectMicrosoft = useConnectMicrosoft();
   const { 
     items, 
     filteredItems, 
@@ -47,9 +49,22 @@ export default function CommandCenterPage() {
   return (
     <div className="animate-in fade-in space-y-4 pb-10 duration-500">
       {statusBanner && (
-        <div className={`${statusBanner.className} px-4 py-3 rounded-lg flex items-center gap-3 text-sm border`}>
-          <AlertCircle className="h-5 w-5 shrink-0" />
-          <p>{statusBanner.message}</p>
+        <div className={`${statusBanner.className} rounded-lg border px-4 py-3 text-sm`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <p>{statusBanner.message}</p>
+            </div>
+            {statusBanner.action === "connect_microsoft" && (
+              <Button
+                size="sm"
+                className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+                onClick={() => connectMicrosoft()}
+              >
+                Connect Microsoft 365
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -141,7 +156,7 @@ function getStatusBanner({
   mcpError?: string;
   microsoftStatus?: string;
   activityError?: string | null;
-}) {
+}): StatusBanner | null {
   if (backendUnavailable) {
     return {
       className: "bg-red-50 text-red-800 border-red-200",
@@ -160,7 +175,8 @@ function getStatusBanner({
   if (microsoftStatus === "disconnected") {
     return {
       className: "bg-amber-50 text-amber-800 border-amber-200",
-      message: "Microsoft 365 is not connected. Connect an account to load Outlook, Calendar, and OneDrive activity.",
+      message: "Microsoft 365 is not connected or needs to be reconnected before NexusHub can load Outlook, Calendar, and OneDrive activity.",
+      action: "connect_microsoft",
     };
   }
   if (microsoftStatus === "error") {
@@ -177,6 +193,12 @@ function getStatusBanner({
   }
   return null;
 }
+
+type StatusBanner = {
+  className: string;
+  message: string;
+  action?: "connect_microsoft";
+};
 
 function getMcpSourceError(sourceErrors: Record<string, string>) {
   const entries = Object.entries(sourceErrors).filter(([source]) =>
