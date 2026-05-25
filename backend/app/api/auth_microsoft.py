@@ -4,11 +4,12 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
 from app.config import get_settings
-from app.core.errors import NexusHubError
+from app.core.errors import AuthenticationRequiredError, NexusHubError
 from app.core.logging import get_logger
 from app.services.microsoft_connection_service import MicrosoftConnectionService
 from app.services.microsoft_graph_service import GRAPH_BASE_URL
 from app.services.microsoft_oauth_service import MicrosoftOAuthService
+from app.services.microsoft_token_service import get_valid_microsoft_access_token
 
 import httpx
 
@@ -61,7 +62,7 @@ async def callback(
     settings = get_settings()
     if error:
         return RedirectResponse(
-            f"{settings.frontend_url}/settings/integrations?provider=microsoft&status=error"
+            f"{settings.frontend_url}/settings?provider=microsoft&status=error"
         )
     if not code or not state:
         raise HTTPException(
@@ -104,13 +105,25 @@ async def callback(
     except Exception as exc:
         raise _connection_failed("token_storage", exc) from exc
     return RedirectResponse(
-        f"{settings.frontend_url}/settings/integrations?provider=microsoft&status=connected&user_id={user_id}"
+        f"{settings.frontend_url}/settings?provider=microsoft&status=connected&user_id={user_id}"
     )
 
 
 @router.get("/status")
 async def status(user_id: str = Query(...)) -> dict[str, object]:
-    return MicrosoftConnectionService().get_status(user_id=user_id)
+    microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)
+    if not microsoft_status.get("connected"):
+        return microsoft_status
+    try:
+        await get_valid_microsoft_access_token(user_id=user_id, workspace_id=None)
+    except AuthenticationRequiredError as exc:
+        return {
+            "connected": False,
+            "provider": "microsoft",
+            "connect_url": "/auth/microsoft/start",
+            "error": {"code": exc.code, "message": exc.message},
+        }
+    return microsoft_status
 
 
 @router.post("/disconnect")

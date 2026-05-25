@@ -63,10 +63,12 @@ async def feed(
         _safe_approvals(user_id=user_id, workspace_id=workspace_id),
     )
 
-    for source, payload, error in results:
+    for source, payload, error, error_kind in results:
         if error:
             source_errors[source] = error
-            if source in {"mail", "calendar", "documents"}:
+            if error_kind == "auth":
+                health["microsoft"] = "disconnected"
+            elif source in {"mail", "calendar", "documents"}:
                 health["mcp"] = "error" if health["mcp"] != "ok" else "partial"
             continue
         if source == "mail":
@@ -78,7 +80,9 @@ async def feed(
         elif source == "approvals":
             items.extend(_approval_items(payload))
 
-    if any("Microsoft 365" in error or "authentication" in error.lower() for error in source_errors.values()):
+    if health["microsoft"] != "disconnected" and any(
+        _is_microsoft_auth_error(error) for error in source_errors.values()
+    ):
         health["microsoft"] = "error"
 
     return _feed_response(
@@ -91,25 +95,32 @@ async def feed(
 
 async def _safe_tool(
     source: str, tool_name: str, arguments: dict[str, Any]
-) -> tuple[str, dict[str, Any], str | None]:
+) -> tuple[str, dict[str, Any], str | None, str | None]:
     try:
         result = await call_tool(tool_name, arguments)
         tool_result = result.get("result") if isinstance(result, dict) else result
         if not isinstance(tool_result, dict):
-            return source, {}, "MCP returned an invalid response."
+            return source, {}, "MCP returned an invalid response.", "mcp"
         if tool_result.get("status") == "authentication_required":
-            return source, {}, str(tool_result.get("message") or "Microsoft 365 authentication is required.")
+            return (
+                source,
+                {},
+                str(tool_result.get("message") or "Microsoft 365 authentication is required."),
+                "auth",
+            )
         if tool_result.get("ok") is False:
             error = tool_result.get("error") or {}
-            return source, {}, str(error.get("message") or "MCP tool call failed.")
-        return source, tool_result.get("data") or tool_result, None
+            message = str(error.get("message") or "MCP tool call failed.")
+            error_code = str(error.get("code") or "")
+            return source, {}, message, "auth" if _is_microsoft_auth_error(message, error_code) else "mcp"
+        return source, tool_result.get("data") or tool_result, None, None
     except Exception as exc:
-        return source, {}, str(exc)
+        return source, {}, str(exc), "mcp"
 
 
 async def _safe_approvals(
     *, user_id: str, workspace_id: str | None
-) -> tuple[str, dict[str, Any], str | None]:
+) -> tuple[str, dict[str, Any], str | None, str | None]:
     try:
         return (
             "approvals",
@@ -117,11 +128,12 @@ async def _safe_approvals(
                 user_id=user_id, workspace_id=workspace_id, max_results=20
             ),
             None,
+            None,
         )
     except NexusHubError as exc:
-        return "approvals", {}, exc.message
+        return "approvals", {}, exc.message, None
     except Exception as exc:
-        return "approvals", {}, str(exc)
+        return "approvals", {}, str(exc), None
 
 
 def _feed_response(
@@ -313,6 +325,19 @@ def _approval_action_label(action_type: str) -> str:
     if action_type == "calendar.reschedule_event":
         return "Approve Reschedule"
     return "Review"
+
+
+def _is_microsoft_auth_error(message: str, code: str = "") -> bool:
+    normalized_code = code.lower()
+    normalized_message = message.lower()
+    return (
+        "authentication_required" in normalized_code
+        or "auth" in normalized_code
+        or "connect microsoft" in normalized_message
+        or "microsoft 365 is not connected" in normalized_message
+        or "please connect microsoft" in normalized_message
+        or "microsoft 365 authentication is required" in normalized_message
+    )
 
 
 def _priority(value: Any) -> str:
