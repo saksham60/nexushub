@@ -220,6 +220,7 @@ Rules:
 - Include only tool-specific arguments. Never include user_id, workspace_id, tokens, or credentials.
 - Prefer read-only tools unless the user clearly asks to prepare a write action.
 - Tools marked requiresApproval are approval-gated; route them only when the request is explicit.
+- For calendar_reschedule_event, extract sourceTime, targetStartTime, targetEndTime, date, timezone, and meetingTitle when present. Convert obvious times to 24-hour HH:MM when possible.
 - If required details are missing, set requiresClarification true.
 - If no tool fits, set toolName null and requiresClarification true.
 - If the user asks a general capability question, choose no tool and request a direct capability response.

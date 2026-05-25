@@ -81,6 +81,12 @@ class ApprovalService:
                 draft_override=draft_override,
                 simulate=simulate,
             )
+        if approved and approval.get("action_type") == "calendar.reschedule_event":
+            return await self._execute_calendar_reschedule_approval(
+                user_id=user_id,
+                approval=approval,
+                simulate=simulate,
+            )
         now = datetime.now(UTC).isoformat()
         status = "approved" if approved else "rejected"
         update = {
@@ -173,6 +179,71 @@ class ApprovalService:
         )
         return {"draft": draft_result}
 
+    async def send_mail_draft(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        outlook_draft_id: str,
+        simulate: bool = False,
+    ) -> dict[str, Any]:
+        connection = MicrosoftConnectionService().get_connected_account(
+            user_id=user_id, workspace_id=workspace_id
+        )
+        if not connection:
+            raise AuthenticationRequiredError("Microsoft 365 is not connected.")
+        mailbox_email = str(connection.get("provider_email") or "")
+        sent_at = datetime.now(UTC).isoformat()
+
+        if simulate:
+            self._audit(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                event_type="mail.sent",
+                metadata={
+                    "outlookDraftId": outlook_draft_id,
+                    "mailboxEmail": mailbox_email,
+                    "simulated": True,
+                },
+            )
+            return {
+                "success": True,
+                "outlookDraftId": outlook_draft_id,
+                "mailboxEmail": mailbox_email,
+                "sentAt": sent_at,
+                "simulated": True,
+            }
+
+        if not MicrosoftConnectionService().has_scope(
+            user_id=user_id, workspace_id=workspace_id, scope="Mail.Send"
+        ):
+            raise ConsentRequiredError(
+                "Mail.Send permission is missing. Reconnect Microsoft 365 and consent to Mail.Send."
+            )
+
+        await MicrosoftGraphService().send_draft(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            draft_id=outlook_draft_id,
+        )
+        self._audit(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            event_type="mail.sent",
+            metadata={
+                "outlookDraftId": outlook_draft_id,
+                "mailboxEmail": mailbox_email,
+                "simulated": False,
+            },
+        )
+        return {
+            "success": True,
+            "outlookDraftId": outlook_draft_id,
+            "mailboxEmail": mailbox_email,
+            "sentAt": sent_at,
+            "simulated": False,
+        }
+
     async def _execute_mail_draft_approval(
         self,
         *,
@@ -243,6 +314,105 @@ class ApprovalService:
             "executed": True,
             "simulated": simulate,
             "draft": draft_result,
+        }
+
+    async def _execute_calendar_reschedule_approval(
+        self,
+        *,
+        user_id: str,
+        approval: dict[str, Any],
+        simulate: bool,
+    ) -> dict[str, Any]:
+        payload = dict(approval.get("payload") or {})
+        workspace_id = payload.get("workspace_id") or approval.get("workspace_id")
+        event_id = str(payload.get("eventId") or "")
+        subject = str(payload.get("subject") or "Meeting")
+        timezone = str(payload.get("timezone") or "UTC")
+        new_start = _parse_datetime(payload.get("newStart"), "New meeting start is required.")
+        new_end = _parse_datetime(payload.get("newEnd"), "New meeting end is required.")
+        if not event_id:
+            raise ConfigurationError("Calendar event id is required.")
+
+        connection = MicrosoftConnectionService().get_connected_account(
+            user_id=user_id, workspace_id=workspace_id
+        )
+        if not connection:
+            raise AuthenticationRequiredError("Microsoft 365 is not connected.")
+        mailbox_email = str(connection.get("provider_email") or "")
+
+        if simulate:
+            calendar_result = {
+                "success": True,
+                "eventId": event_id,
+                "subject": subject,
+                "start": new_start.isoformat(),
+                "end": new_end.isoformat(),
+                "timezone": timezone,
+                "mailboxEmail": mailbox_email,
+                "webLink": None,
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "simulated": True,
+            }
+        else:
+            if not MicrosoftConnectionService().has_scope(
+                user_id=user_id, workspace_id=workspace_id, scope="Calendars.ReadWrite"
+            ):
+                raise ConsentRequiredError(
+                    "Calendars.ReadWrite permission is missing. Reconnect Microsoft 365 and consent to Calendars.ReadWrite."
+                )
+            updated_event = await MicrosoftGraphService().update_event_time(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                event_id=event_id,
+                start=new_start,
+                end=new_end,
+                timezone=timezone,
+            )
+            calendar_result = {
+                "success": True,
+                "eventId": event_id,
+                "subject": updated_event.get("subject") or subject,
+                "start": updated_event.get("start") or new_start.isoformat(),
+                "end": updated_event.get("end") or new_end.isoformat(),
+                "timezone": timezone,
+                "mailboxEmail": mailbox_email,
+                "webLink": updated_event.get("webLink"),
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "simulated": False,
+            }
+
+        now = datetime.now(UTC).isoformat()
+        response = (
+            get_supabase()
+            .table("approval_actions")
+            .update(
+                {
+                    "status": "approved",
+                    "approved_at": now,
+                    "executed_at": now,
+                }
+            )
+            .eq("id", approval["id"])
+            .eq("user_id", user_id)
+            .execute()
+        )
+        updated = dict(response.data[0])
+        self._audit(
+            user_id=user_id,
+            workspace_id=updated.get("workspace_id"),
+            event_type="calendar.rescheduled",
+            metadata={
+                "approval_id": approval["id"],
+                "eventId": event_id,
+                "mailboxEmail": mailbox_email,
+                "simulated": simulate,
+            },
+        )
+        return {
+            **updated,
+            "executed": True,
+            "simulated": simulate,
+            "calendarEvent": calendar_result,
         }
 
     async def _create_outlook_draft(
@@ -344,3 +514,12 @@ def _normalize_recipients(value: Any) -> list[str]:
 
 def approval_safe_timestamp(value: str) -> str:
     return "".join(char for char in value if char.isdigit())[:14] or "created"
+
+
+def _parse_datetime(value: Any, error_message: str) -> datetime:
+    if not value:
+        raise ConfigurationError(error_message)
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ConfigurationError(error_message) from exc

@@ -9,6 +9,7 @@ export const endpoints = {
   mailDraftReply: "/api/mail/draft-reply",
   mailDraftPreview: "/mail/drafts/preview",
   mailDraftCreate: "/mail/drafts",
+  mailDraftSend: "/api/mail/drafts/send",
   documentUpload: "/api/documents/uploads",
   documentAnalyze: "/api/documents/analyze",
   documentReports: "/api/documents/reports",

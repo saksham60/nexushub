@@ -6,8 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, Check, ExternalLink, Mail, Sparkles } from "lucide-react";
 import { useApproveAction } from "@/features/approvals/hooks";
-import { useCreateOutlookDraft, useGenerateDraftReply } from "@/features/mail/hooks";
-import { DraftCreateResponse, DraftReplyResponse } from "@/features/mail/types";
+import {
+  useCreateOutlookDraft,
+  useGenerateDraftReply,
+  useSendOutlookDraft,
+} from "@/features/mail/hooks";
+import { DraftCreateResponse, DraftReplyResponse, DraftSendResponse } from "@/features/mail/types";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 
 interface DecisionPanelProps {
@@ -18,6 +22,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const approveAction = useApproveAction();
   const generateDraftReply = useGenerateDraftReply();
   const createOutlookDraft = useCreateOutlookDraft();
+  const sendOutlookDraft = useSendOutlookDraft();
   const [draftState, setDraftState] = useState<{
     itemId: string;
     preview: DraftReplyResponse;
@@ -28,11 +33,26 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     itemId: string;
     draft: DraftCreateResponse;
   } | null>(null);
+  const [sentDraftState, setSentDraftState] = useState<{
+    itemId: string;
+    sent: DraftSendResponse;
+  } | null>(null);
+  const [calendarUpdateState, setCalendarUpdateState] = useState<{
+    itemId: string;
+    event: {
+      success?: boolean;
+      subject?: string;
+      mailboxEmail?: string;
+      webLink?: string | null;
+    };
+  } | null>(null);
 
   const draft = item && draftState?.itemId === item.id ? draftState.preview : null;
   const draftBody = item && draftState?.itemId === item.id ? draftState.body : "";
   const draftError = item && draftErrorState?.itemId === item.id ? draftErrorState.message : null;
   const createdDraft = item && createdDraftState?.itemId === item.id ? createdDraftState.draft : null;
+  const sentDraft = item && sentDraftState?.itemId === item.id ? sentDraftState.sent : null;
+  const updatedCalendar = item && calendarUpdateState?.itemId === item.id ? calendarUpdateState.event : null;
 
   const metadata = (item?.metadata || {}) as Record<string, any>;
   const emailRecipients = useMemo(() => {
@@ -61,6 +81,8 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
 
     setDraftErrorState(null);
     setCreatedDraftState(null);
+    setSentDraftState(null);
+    setCalendarUpdateState(null);
     try {
       const preview = await generateDraftReply.mutateAsync({
         messageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
@@ -85,6 +107,8 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const saveDraftToOutlook = async () => {
     if (!draft || item.type !== "email") return;
     setDraftErrorState(null);
+    setSentDraftState(null);
+    setCalendarUpdateState(null);
     try {
       const created = await createOutlookDraft.mutateAsync({
         originalMessageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
@@ -95,6 +119,19 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
         approvalId: null,
       });
       setCreatedDraftState({ itemId: item.id, draft: created });
+    } catch (error) {
+      setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
+    }
+  };
+
+  const sendSavedDraft = async () => {
+    if (!createdDraft?.outlookDraftId || item.type !== "email") return;
+    setDraftErrorState(null);
+    try {
+      const sent = await sendOutlookDraft.mutateAsync({
+        outlookDraftId: createdDraft.outlookDraftId,
+      });
+      setSentDraftState({ itemId: item.id, sent });
     } catch (error) {
       setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
     }
@@ -118,6 +155,13 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
             approvalId,
           },
         });
+        setSentDraftState(null);
+      }
+      if (result?.calendarEvent) {
+        setCalendarUpdateState({
+          itemId: item.id,
+          event: result.calendarEvent,
+        });
       }
     } catch (error) {
       setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
@@ -127,27 +171,35 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const primaryAction = async () => {
     if (item.type === "email") {
       if (!draft) await generateDraft();
-      else await saveDraftToOutlook();
+      else if (!createdDraft) await saveDraftToOutlook();
+      else if (!sentDraft) await sendSavedDraft();
       return;
     }
     if (item.type === "approval") await approveExistingApproval();
   };
 
   const primaryLabel = () => {
+    if (item.type === "email" && sentDraft) return "Email sent";
+    if (sendOutlookDraft.isPending) return "Sending...";
+    if (item.type === "email" && createdDraft) return "Send Email";
     if (createdDraft) return "Draft saved";
+    if (updatedCalendar) return "Meeting updated";
     if (createOutlookDraft.isPending) return "Saving...";
     if (generateDraftReply.isPending) return "Drafting...";
     if (item.type === "email" && draft) return "Save Draft to Outlook";
     if (item.type === "email") return "Draft Reply";
-    if (item.type === "approval") return "Create Outlook Draft";
+    if (item.type === "approval") return approvalPrimaryLabel(metadata.action_type);
     return item.primaryActionLabel;
   };
 
   const primaryDisabled =
     generateDraftReply.isPending ||
     createOutlookDraft.isPending ||
+    sendOutlookDraft.isPending ||
     approveAction.isPending ||
-    Boolean(createdDraft);
+    Boolean(sentDraft) ||
+    Boolean(updatedCalendar) ||
+    Boolean(item.type === "email" && createdDraft && !createdDraft.outlookDraftId);
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -178,9 +230,27 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           </div>
         )}
 
-        {createdDraft && (
+        {sentDraft ? (
           <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            Draft saved to Outlook. Review and send from Outlook.
+            Email sent from Outlook for {sentDraft.mailboxEmail}.
+          </div>
+        ) : updatedCalendar ? (
+          <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            Meeting updated in Outlook for {updatedCalendar.mailboxEmail}.
+            {updatedCalendar.webLink && (
+              <a
+                href={updatedCalendar.webLink}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1 font-medium text-green-900 hover:underline"
+              >
+                Open Meeting in Outlook <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        ) : createdDraft ? (
+          <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            Draft saved to Outlook. You can send it now or review it in Outlook.
             {createdDraft.webLink && (
               <a
                 href={createdDraft.webLink}
@@ -192,13 +262,13 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
               </a>
             )}
           </div>
-        )}
+        ) : null}
 
         <div className="space-y-3">
           <section>
             <h4 className="mb-1 text-xs font-semibold text-zinc-500">Why this matters</h4>
             <p className="rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm text-zinc-700">
-              {String(metadata.reason || item.description || "This item is in your priority feed and may need a decision.")}
+              {whyThisMatters(item, metadata)}
             </p>
           </section>
 
@@ -236,6 +306,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
                   </div>
                   <Textarea
                     value={draftBody}
+                    disabled={Boolean(createdDraft)}
                     onChange={(event) =>
                       setDraftState((state) =>
                         state && state.itemId === item.id ? { ...state, body: event.target.value } : state,
@@ -282,10 +353,29 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
 }
 
 function summaryFor(item: ActionItem): string {
+  const metadata = (item.metadata || {}) as Record<string, any>;
+  const preview = metadata.preview && typeof metadata.preview === "object" ? metadata.preview : {};
+  if (item.type === "approval" && preview.kind === "calendar_reschedule") {
+    return `${preview.subject || "This meeting"} is ready to move from ${preview.from} to ${preview.to}.`;
+  }
   if (item.type === "email") {
     return item.description
       ? `${item.person || "The sender"} is asking for your input. ${item.description}`
       : "This email likely needs a concise reply or clarification.";
   }
   return item.description || "NexusHub selected this item because it may need your attention.";
+}
+
+function whyThisMatters(item: ActionItem, metadata: Record<string, any>): string {
+  const preview = metadata.preview && typeof metadata.preview === "object" ? metadata.preview : {};
+  if (item.type === "approval" && preview.kind === "calendar_reschedule") {
+    return `This calendar change will update Outlook. Review before moving ${preview.subject || "the meeting"}.`;
+  }
+  return String(metadata.reason || item.description || "This item is in your priority feed and may need a decision.");
+}
+
+function approvalPrimaryLabel(actionType: unknown): string {
+  if (actionType === "calendar.reschedule_event") return "Approve Reschedule";
+  if (actionType === "mail.create_draft_reply") return "Create Outlook Draft";
+  return "Approve Action";
 }

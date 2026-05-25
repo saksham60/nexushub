@@ -18,6 +18,7 @@ from app.models.schemas import (
     MailDraftCreateRequest,
     MailDraftPreviewRequest,
     MailDraftReplyRequest,
+    MailDraftSendRequest,
 )
 from app.services.approval_service import ApprovalService
 from app.services.mail_draft_generation_service import MailDraftGenerationService
@@ -166,6 +167,19 @@ async def create_draft(payload: MailDraftCreateRequest) -> dict[str, Any]:
         "simulated": bool(draft.get("simulated")),
         "approvalId": payload.approval_id,
     }
+
+
+@router.post("/drafts/send")
+async def send_draft(payload: MailDraftSendRequest) -> dict[str, Any]:
+    try:
+        return await ApprovalService().send_mail_draft(
+            user_id=payload.user_id,
+            workspace_id=payload.workspace_id,
+            outlook_draft_id=payload.outlookDraftId,
+            simulate=payload.simulate,
+        )
+    except NexusHubError as exc:
+        raise _http_error(exc) from exc
 
 
 def _http_error(exc: NexusHubError) -> HTTPException:

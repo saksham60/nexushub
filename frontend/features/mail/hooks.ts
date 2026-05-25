@@ -11,6 +11,8 @@ import {
   DraftPreviewResponse,
   DraftReplyRequest,
   DraftReplyResponse,
+  DraftSendRequest,
+  DraftSendResponse,
 } from "./types";
 
 export function useGenerateDraftReply() {
@@ -51,6 +53,23 @@ export function useCreateOutlookDraft() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
       toast.success(`Draft created in Outlook for ${data.mailboxEmail}`);
+    },
+    onError: (error) => {
+      toast.error(getFriendlyErrorMessage(error));
+    },
+  });
+}
+
+export function useSendOutlookDraft() {
+  return useMutation({
+    mutationFn: (payload: DraftSendRequest) =>
+      apiClient.post<DraftSendResponse>(endpoints.mailDraftSend, {
+        ...getRequestIdentity(),
+        ...payload,
+        simulate: process.env.NEXT_PUBLIC_DEMO_MODE === "true",
+      }),
+    onSuccess: (data) => {
+      toast.success(`Email sent from Outlook for ${data.mailboxEmail}`);
     },
     onError: (error) => {
       toast.error(getFriendlyErrorMessage(error));

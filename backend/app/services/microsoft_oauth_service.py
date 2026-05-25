@@ -19,7 +19,9 @@ MICROSOFT_SCOPES = (
     "User.Read",
     "Mail.Read",
     "Mail.ReadWrite",
+    "Mail.Send",
     "Calendars.Read",
+    "Calendars.ReadWrite",
     "Files.Read.All",
 )
 

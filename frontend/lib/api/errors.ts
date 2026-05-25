@@ -33,7 +33,7 @@ export function getFriendlyErrorMessage(error: any): string {
         return "Connect Microsoft 365 to unlock Outlook, Calendar, and OneDrive data.";
       case "consent_required":
       case "GRAPH_PERMISSION_MISSING":
-        return "Mail.ReadWrite permission is missing. Reconnect Microsoft 365 and approve Mail.ReadWrite.";
+        return error.message || "Required mail permission is missing. Reconnect Microsoft 365 and approve the requested permission.";
       case "LLM_UNAVAILABLE":
         return "The LLM service is unavailable. Please try again.";
       case "INSUFFICIENT_EMAIL_CONTEXT":

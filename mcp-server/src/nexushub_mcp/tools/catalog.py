@@ -19,6 +19,7 @@ TOOL_CATEGORIES: tuple[dict[str, Any], ...] = (
             "calendar_get_today_agenda",
             "calendar_find_focus_blocks",
             "calendar_prepare_meeting_brief",
+            "calendar_reschedule_event",
         ),
     },
     {

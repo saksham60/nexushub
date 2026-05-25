@@ -23,6 +23,14 @@ export type ApprovalPreview =
     }
   | { kind: "mark_read"; message_ids: string[]; count: number }
   | { kind: "calendar_event"; title: string; start: string; end: string }
+  | {
+      kind: "calendar_reschedule";
+      title: string;
+      subject: string;
+      from: string;
+      to: string;
+      eventId?: string;
+    }
   | { kind: "generic"; title: string; description: string; payload_summary?: Record<string, string> };
 
 export type ApprovalAction = {

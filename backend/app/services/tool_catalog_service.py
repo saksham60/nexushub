@@ -59,6 +59,21 @@ TOOL_METADATA: dict[str, dict[str, Any]] = {
         "inputSchema": {"eventId": "string", "meetingTitle": "string"},
         "requiresApproval": False,
     },
+    "calendar_reschedule_event": {
+        "category": "calendar",
+        "description": "Prepare an approval-gated Outlook calendar meeting reschedule.",
+        "inputSchema": {
+            "eventId": "string",
+            "meetingTitle": "string",
+            "sourceTime": "HH:MM or natural time",
+            "targetStartTime": "HH:MM or natural time",
+            "targetEndTime": "HH:MM or natural time",
+            "date": "YYYY-MM-DD|today|tomorrow",
+            "timezone": "IANA timezone",
+            "reason": "string",
+        },
+        "requiresApproval": True,
+    },
     "docs_list_recent_files": {
         "category": "documents",
         "description": "List recent OneDrive or SharePoint files.",

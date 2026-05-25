@@ -66,6 +66,11 @@ class MailDraftCreateRequest(UserWorkspaceRequest):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class MailDraftSendRequest(UserWorkspaceRequest):
+    outlookDraftId: str
+    simulate: bool = False
+
+
 class MailDraftReplyRequest(UserWorkspaceRequest):
     messageId: str
     subject: str

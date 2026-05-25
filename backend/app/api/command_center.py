@@ -300,11 +300,19 @@ def _approval_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "source": "NexusHub",
                 "priority": "high",
                 "status": "pending",
-                "primaryActionLabel": "Create Draft" if action_type == "mail.create_draft_reply" else "Review",
+                "primaryActionLabel": _approval_action_label(action_type),
                 "metadata": approval,
             }
         )
     return items
+
+
+def _approval_action_label(action_type: str) -> str:
+    if action_type == "mail.create_draft_reply":
+        return "Create Draft"
+    if action_type == "calendar.reschedule_event":
+        return "Approve Reschedule"
+    return "Review"
 
 
 def _priority(value: Any) -> str:

@@ -51,6 +51,18 @@ export type DraftCreateResponse = {
   approvalId?: string | null;
 };
 
+export type DraftSendRequest = {
+  outlookDraftId: string;
+};
+
+export type DraftSendResponse = {
+  success: boolean;
+  outlookDraftId: string;
+  mailboxEmail: string;
+  sentAt: string;
+  simulated?: boolean;
+};
+
 export type DraftReplyRequest = {
   messageId: string;
   subject: string;
