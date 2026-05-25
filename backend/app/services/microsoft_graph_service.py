@@ -120,6 +120,17 @@ class MicrosoftGraphService:
                         f"/me/messages/{original_id_path}/createReply",
                         headers=headers,
                     )
+                    if _should_fallback_to_standalone_draft(created):
+                        fallback_reason = _graph_error_message(
+                            created,
+                            "Microsoft Graph could not create a threaded reply draft.",
+                        )
+                        return await self._create_standalone_draft(
+                            client=client,
+                            headers=headers,
+                            message_payload=message_payload,
+                            fallback_reason=fallback_reason,
+                        )
                     await self._raise_for_draft_error(created)
                     draft = created.json()
                     draft_id = draft.get("id")
@@ -143,19 +154,38 @@ class MicrosoftGraphService:
                         "id": draft_id,
                         "webLink": draft.get("webLink"),
                         "createdDateTime": draft.get("createdDateTime"),
+                        "createdVia": "reply_draft",
                     }
 
-                created = await client.post(
-                    "/me/messages",
-                    json=message_payload,
-                    headers={**headers, "Content-Type": "application/json"},
+                return await self._create_standalone_draft(
+                    client=client,
+                    headers=headers,
+                    message_payload=message_payload,
                 )
-                await self._raise_for_draft_error(created)
         except httpx.HTTPError as exc:
             raise GraphServiceError("Microsoft Graph draft creation failed.") from exc
 
+    async def _create_standalone_draft(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        message_payload: dict[str, Any],
+        fallback_reason: str | None = None,
+    ) -> dict[str, Any]:
+        created = await client.post(
+            "/me/messages",
+            json=message_payload,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        await self._raise_for_draft_error(created)
         payload = created.json()
-        return payload if isinstance(payload, dict) else {"value": payload}
+        if not isinstance(payload, dict):
+            return {"value": payload}
+        payload["createdVia"] = "standalone_draft"
+        if fallback_reason:
+            payload["replyFallbackReason"] = fallback_reason
+        return payload
 
     async def send_draft(
         self,
@@ -282,12 +312,18 @@ def _graph_path_segment(value: str) -> str:
     return quote(value, safe="")
 
 
+def _should_fallback_to_standalone_draft(response: httpx.Response) -> bool:
+    return response.status_code in {400, 404}
+
+
 def _graph_error_message(response: httpx.Response, fallback: str) -> str:
     try:
         payload = response.json()
         graph_error = payload.get("error") if isinstance(payload, dict) else None
         if isinstance(graph_error, dict) and graph_error.get("message"):
-            return str(graph_error["message"])
+            graph_code = graph_error.get("code")
+            message = str(graph_error["message"])
+            return f"{graph_code}: {message}" if graph_code else message
     except ValueError:
         pass
     return fallback
