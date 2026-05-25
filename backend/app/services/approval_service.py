@@ -132,6 +132,47 @@ class ApprovalService:
             simulate=simulate,
         )
 
+    async def create_mail_draft_direct(
+        self,
+        *,
+        user_id: str,
+        draft_body: str,
+        subject: str,
+        recipients: list[str],
+        original_message_id: str | None,
+        workspace_id: str | None = None,
+        simulate: bool = False,
+    ) -> dict[str, Any]:
+        if not draft_body.strip():
+            raise ConfigurationError("Draft body is required.")
+        normalized_recipients = _normalize_recipients(recipients)
+        if not normalized_recipients:
+            raise ConfigurationError(
+                "At least one recipient is required to create an Outlook draft."
+            )
+
+        draft_result = await self._create_outlook_draft(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            original_message_id=original_message_id,
+            subject=subject,
+            recipients=normalized_recipients,
+            body=draft_body,
+            simulate=simulate,
+        )
+        self._audit(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            event_type="mail.draft_created",
+            metadata={
+                "outlookDraftId": draft_result.get("outlookDraftId"),
+                "mailboxEmail": draft_result.get("mailboxEmail"),
+                "simulated": simulate,
+                "approval_id": None,
+            },
+        )
+        return {"draft": draft_result}
+
     async def _execute_mail_draft_approval(
         self,
         *,

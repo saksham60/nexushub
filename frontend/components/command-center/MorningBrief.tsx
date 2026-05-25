@@ -2,7 +2,6 @@
 
 import { useSession } from "@/features/session/hooks";
 import { AgentCommandBar } from "@/components/agent/AgentCommandBar";
-import { SuggestedPromptChips } from "@/components/agent/SuggestedPromptChips";
 import { AgentChatResponse } from "@/features/agent/types";
 
 export function MorningBrief({
@@ -26,37 +25,24 @@ export function MorningBrief({
   const name = session?.status === "ok" ? session.user.display_name.split(" ")[0] : "there";
 
   return (
-    <div className="space-y-6">
+    <section className="grid gap-4 pt-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:items-end">
       <div>
-        <h1 className="text-3xl font-light text-zinc-900 tracking-tight">
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
           {getGreeting()}, {name}.
         </h1>
-        <p className="text-zinc-500 mt-2 text-lg">
-          Here&apos;s what needs your attention across email, meetings, documents, and approvals.
+        <p className="mt-2 text-base text-zinc-500">
+          Your executive work cockpit. Decisions first, noise filtered out.
         </p>
       </div>
 
-      <div className="max-w-3xl">
+      <div className="lg:justify-self-end lg:w-full">
         <AgentCommandBar
           placeholder="Ask NexusHub to find, summarize, prepare, or draft..."
           onSubmitCommand={onRunPrompt}
           response={agentResponse}
           isPending={isSubmittingPrompt}
         />
-        <div className="mt-3">
-          <SuggestedPromptChips
-            prompts={[
-              "What needs my attention?",
-              "Prepare my next meeting",
-              "Draft urgent replies",
-              "Summarize recent files",
-              "Show pending approvals",
-              "How many tools are available?",
-            ]}
-            onSelect={(prompt) => void onRunPrompt?.(prompt)}
-          />
-        </div>
       </div>
-    </div>
+    </section>
   );
 }

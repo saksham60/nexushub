@@ -114,9 +114,9 @@ export function ReportBuilderWidget() {
             <p className="mb-2 text-xs text-zinc-500">
               {report.sourceStats?.charactersExtracted ?? 0} chars extracted
               {report.sourceStats?.parser ? ` via ${report.sourceStats.parser}` : ""}
-              {" · "}
+              {" - "}
               LLM {report.llmStatus}
-              {" · "}
+              {" - "}
               {new Date(report.createdAt).toLocaleString()}
             </p>
             <h4 className="font-semibold text-zinc-900">{report.title}</h4>

@@ -26,12 +26,19 @@ export type CommandCenterFeedCounts = {
   meetingsToday: number;
   approvalsPending: number;
   filesToReview: number;
+  aiSuggestions: number;
+};
+
+export type CommandCenterTopInsight = {
+  title: string;
+  description?: string;
 };
 
 export type CommandCenterFeedResponse = {
   mailboxEmail: string | null;
   health: CommandCenterFeedHealth;
   counts: CommandCenterFeedCounts;
+  topInsight?: CommandCenterTopInsight;
   items: ActionItem[];
   errors?: Record<string, string>;
 };

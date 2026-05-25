@@ -1,5 +1,5 @@
 export type HealthDependency = {
-  status: "ok" | "degraded" | "unreachable" | "unknown";
+  status: "ok" | "degraded" | "unreachable" | "unknown" | "connected" | "disconnected" | "error";
   service?: string;
   mode?: string;
   transport?: string;
@@ -23,5 +23,6 @@ export type BackendHealthResponse = {
   };
   dependencies: {
     mcp?: HealthDependency;
+    microsoft?: HealthDependency & { email?: string };
   };
 };

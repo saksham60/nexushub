@@ -139,10 +139,45 @@ def _feed_response(
             "meetingsToday": sum(1 for item in items if item["type"] == "calendar"),
             "approvalsPending": sum(1 for item in items if item["type"] == "approval"),
             "filesToReview": sum(1 for item in items if item["type"] == "document"),
+            "aiSuggestions": _ai_suggestion_count(items),
         },
+        "topInsight": _top_insight(items),
         "items": items,
         "errors": source_errors,
     }
+
+
+def _ai_suggestion_count(items: list[dict[str, Any]]) -> int:
+    actionable = [item for item in items if item.get("primaryActionLabel")]
+    return min(max(len(actionable), 0), 3)
+
+
+def _top_insight(items: list[dict[str, Any]]) -> dict[str, str]:
+    high_count = sum(1 for item in items if item.get("priority") == "high")
+    time_sensitive = high_count or sum(1 for item in items if item["type"] in {"email", "approval"})
+    if time_sensitive:
+        return {
+            "title": f"{time_sensitive} time-sensitive item{'s' if time_sensitive != 1 else ''} require attention today.",
+            "description": _insight_description(items),
+        }
+    return {
+        "title": "No time-sensitive decisions are waiting right now.",
+        "description": "Your priority feed is clear. NexusHub will surface new decisions as they arrive.",
+    }
+
+
+def _insight_description(items: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    email_count = sum(1 for item in items if item["type"] == "email")
+    approval_count = sum(1 for item in items if item["type"] == "approval")
+    document_count = sum(1 for item in items if item["type"] == "document")
+    if email_count:
+        parts.append(f"{email_count} email{'s' if email_count != 1 else ''} may need a reply")
+    if approval_count:
+        parts.append(f"{approval_count} approval{'s' if approval_count != 1 else ''} are pending")
+    if document_count:
+        parts.append(f"{document_count} file{'s' if document_count != 1 else ''} are ready for review")
+    return "; ".join(parts) + "." if parts else "No urgent Microsoft 365 activity was found."
 
 
 def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str, Any]]:

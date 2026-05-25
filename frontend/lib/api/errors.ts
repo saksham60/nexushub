@@ -28,9 +28,11 @@ export function getFriendlyErrorMessage(error: any): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "MICROSOFT_NOT_CONNECTED":
+      case "MICROSOFT_DISCONNECTED":
       case "authentication_required":
         return "Connect Microsoft 365 to unlock Outlook, Calendar, and OneDrive data.";
       case "consent_required":
+      case "GRAPH_PERMISSION_MISSING":
         return "Mail.ReadWrite permission is missing. Reconnect Microsoft 365 and approve Mail.ReadWrite.";
       case "LLM_UNAVAILABLE":
         return "The LLM service is unavailable. Please try again.";
@@ -43,6 +45,7 @@ export function getFriendlyErrorMessage(error: any): string {
       case "FEATURE_DISABLED":
         return error.message || "This NexusHub feature is disabled.";
       case "graph_error":
+      case "GRAPH_ERROR":
         return "Microsoft Graph is not responding. Your in-app draft was kept.";
       case "mcp_unreachable":
         return "NexusHub MCP is not reachable. Your in-app draft was kept.";

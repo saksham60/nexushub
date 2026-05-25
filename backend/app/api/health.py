@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.config import get_settings
 from app.services.mcp_client import get_mcp_health
+from app.services.microsoft_connection_service import MicrosoftConnectionService
 
 router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict[str, Any]:
+async def health(user_id: str | None = Query(default=None)) -> dict[str, Any]:
     settings = get_settings()
     mcp: dict[str, Any]
     overall_status = "ok"
@@ -39,6 +40,23 @@ async def health() -> dict[str, Any]:
             },
         }
 
+    microsoft = {"status": "unknown", "service": "microsoft-graph"}
+    if user_id:
+        try:
+            status = MicrosoftConnectionService().get_status(user_id=user_id)
+            microsoft = {
+                "status": "connected" if status.get("connected") else "disconnected",
+                "service": "microsoft-graph",
+                "email": status.get("email"),
+            }
+        except Exception as exc:
+            overall_status = "degraded"
+            microsoft = {
+                "status": "error",
+                "service": "microsoft-graph",
+                "error": {"code": "microsoft_status_error", "message": str(exc)},
+            }
+
     return {
         "status": overall_status,
         "service": "nexushub-backend",
@@ -49,5 +67,6 @@ async def health() -> dict[str, Any]:
         },
         "dependencies": {
             "mcp": mcp,
+            "microsoft": microsoft,
         },
     }

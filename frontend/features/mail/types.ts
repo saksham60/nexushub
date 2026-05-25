@@ -33,11 +33,12 @@ export type DraftPreviewResponse = {
 };
 
 export type DraftCreateRequest = {
-  original_message_id?: string | null;
-  draft_body: string;
+  originalMessageId?: string | null;
+  draftBody: string;
   subject: string;
   recipients: string[];
-  approval_id: string;
+  mailboxEmail?: string;
+  approvalId?: string | null;
 };
 
 export type DraftCreateResponse = {
@@ -47,7 +48,7 @@ export type DraftCreateResponse = {
   createdAt: string;
   webLink?: string | null;
   simulated?: boolean;
-  approvalId: string;
+  approvalId?: string | null;
 };
 
 export type DraftReplyRequest = {

@@ -83,6 +83,11 @@ export function AgentCommandBar({
           </Button>
         </form>
       </div>
+      {pending && (
+        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Checking your workspace...
+        </div>
+      )}
       <AgentResponsePanel response={visibleResponse} />
     </div>
   );

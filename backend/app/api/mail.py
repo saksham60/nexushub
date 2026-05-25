@@ -131,26 +131,28 @@ async def preview_draft(payload: MailDraftPreviewRequest) -> dict[str, Any]:
 
 @router.post("/drafts")
 async def create_draft(payload: MailDraftCreateRequest) -> dict[str, Any]:
-    if not payload.approval_id:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "approval_required",
-                "message": "approval_id is required to create an Outlook draft.",
-            },
-        )
-
     try:
-        result = await ApprovalService().create_mail_draft_from_approval(
-            user_id=payload.user_id,
-            workspace_id=payload.workspace_id,
-            approval_id=payload.approval_id,
-            draft_body=payload.draft_body,
-            subject=payload.subject,
-            recipients=payload.recipients,
-            original_message_id=payload.original_message_id,
-            simulate=payload.simulate,
-        )
+        if payload.approval_id:
+            result = await ApprovalService().create_mail_draft_from_approval(
+                user_id=payload.user_id,
+                workspace_id=payload.workspace_id,
+                approval_id=payload.approval_id,
+                draft_body=payload.draft_body,
+                subject=payload.subject,
+                recipients=payload.recipients,
+                original_message_id=payload.original_message_id,
+                simulate=payload.simulate,
+            )
+        else:
+            result = await ApprovalService().create_mail_draft_direct(
+                user_id=payload.user_id,
+                workspace_id=payload.workspace_id,
+                draft_body=payload.draft_body,
+                subject=payload.subject,
+                recipients=payload.recipients,
+                original_message_id=payload.original_message_id,
+                simulate=payload.simulate,
+            )
     except NexusHubError as exc:
         raise _http_error(exc) from exc
 
@@ -168,15 +170,19 @@ async def create_draft(payload: MailDraftCreateRequest) -> dict[str, Any]:
 
 def _http_error(exc: NexusHubError) -> HTTPException:
     status_code = 400
+    code = exc.code
     if isinstance(exc, AuthenticationRequiredError):
         status_code = 401
+        code = "MICROSOFT_DISCONNECTED"
     elif isinstance(exc, ConsentRequiredError):
         status_code = 403
+        code = "GRAPH_PERMISSION_MISSING"
     elif isinstance(exc, GraphServiceError):
         status_code = 502
+        code = "GRAPH_ERROR"
     return HTTPException(
         status_code=status_code,
-        detail={"code": exc.code, "message": exc.message},
+        detail={"code": code, "message": exc.message},
     )
 
 

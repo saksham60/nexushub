@@ -55,12 +55,15 @@ class MailDraftPreviewRequest(UserWorkspaceRequest):
 
 
 class MailDraftCreateRequest(UserWorkspaceRequest):
-    original_message_id: str | None = None
-    draft_body: str
+    original_message_id: str | None = Field(default=None, alias="originalMessageId")
+    draft_body: str = Field(alias="draftBody")
     subject: str
     recipients: list[str] = Field(default_factory=list)
-    approval_id: str | None = None
+    mailbox_email: str | None = Field(default=None, alias="mailboxEmail")
+    approval_id: str | None = Field(default=None, alias="approvalId")
     simulate: bool = False
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MailDraftReplyRequest(UserWorkspaceRequest):

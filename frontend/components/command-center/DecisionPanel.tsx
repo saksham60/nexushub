@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { ActionItem } from "@/features/command-center/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertCircle, Calendar, Check, ExternalLink } from "lucide-react";
+import { AlertCircle, Check, ExternalLink, Mail, Sparkles } from "lucide-react";
 import { useApproveAction } from "@/features/approvals/hooks";
-import { useGenerateDraftReply } from "@/features/mail/hooks";
+import { useCreateOutlookDraft, useGenerateDraftReply } from "@/features/mail/hooks";
 import { DraftCreateResponse, DraftReplyResponse } from "@/features/mail/types";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 
@@ -17,6 +17,7 @@ interface DecisionPanelProps {
 export function DecisionPanel({ item }: DecisionPanelProps) {
   const approveAction = useApproveAction();
   const generateDraftReply = useGenerateDraftReply();
+  const createOutlookDraft = useCreateOutlookDraft();
   const [draftState, setDraftState] = useState<{
     itemId: string;
     preview: DraftReplyResponse;
@@ -33,25 +34,22 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const draftError = item && draftErrorState?.itemId === item.id ? draftErrorState.message : null;
   const createdDraft = item && createdDraftState?.itemId === item.id ? createdDraftState.draft : null;
 
-  const emailDraftPreview = item?.type === "approval" && (item.metadata as any)?.preview?.kind === "email_draft"
-    ? (item.metadata as any).preview
-    : null;
-
+  const metadata = (item?.metadata || {}) as Record<string, any>;
   const emailRecipients = useMemo(() => {
     if (!item || item.type !== "email") return [];
-    const email = (item.metadata as any)?.from;
+    const email = metadata.from;
     return email && String(email).includes("@") ? [String(email)] : [];
-  }, [item]);
+  }, [item, metadata.from]);
 
   if (!item) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-zinc-50 rounded-xl border border-zinc-200 border-dashed">
-        <p className="text-zinc-500">Select an item from the feed to view details and take action.</p>
+      <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50 p-8 text-center">
+        <p className="text-zinc-500">NexusHub will auto-select the highest priority decision here.</p>
       </div>
     );
   }
 
-  const createPreview = async () => {
+  const generateDraft = async () => {
     if (item.type !== "email") return;
     if (emailRecipients.length === 0) {
       setDraftErrorState({
@@ -64,7 +62,6 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     setDraftErrorState(null);
     setCreatedDraftState(null);
     try {
-      const metadata = (item.metadata || {}) as Record<string, any>;
       const preview = await generateDraftReply.mutateAsync({
         messageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
         subject: String(metadata.subject || item.title),
@@ -82,6 +79,24 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
         itemId: item.id,
         message: "Could not generate draft. Please try again.",
       });
+    }
+  };
+
+  const saveDraftToOutlook = async () => {
+    if (!draft || item.type !== "email") return;
+    setDraftErrorState(null);
+    try {
+      const created = await createOutlookDraft.mutateAsync({
+        originalMessageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
+        subject: draft.draftSubject,
+        recipients: emailRecipients,
+        draftBody,
+        mailboxEmail: String(metadata.mailboxEmail || ""),
+        approvalId: null,
+      });
+      setCreatedDraftState({ itemId: item.id, draft: created });
+    } catch (error) {
+      setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
     }
   };
 
@@ -109,63 +124,63 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     }
   };
 
-  const handleAction = () => {
+  const primaryAction = async () => {
     if (item.type === "email") {
-      void createPreview();
+      if (!draft) await generateDraft();
+      else await saveDraftToOutlook();
       return;
     }
-    if (item.type === "approval") {
-      void approveExistingApproval();
-    }
+    if (item.type === "approval") await approveExistingApproval();
   };
 
   const primaryLabel = () => {
-    if (item.type === "email" && draft) return "Approval Required";
+    if (createdDraft) return "Draft saved";
+    if (createOutlookDraft.isPending) return "Saving...";
+    if (generateDraftReply.isPending) return "Drafting...";
+    if (item.type === "email" && draft) return "Save Draft to Outlook";
     if (item.type === "email") return "Draft Reply";
-    if (item.type === "approval" && (item.metadata as any)?.action_type === "mail.create_draft_reply") {
-      return "Create Outlook Draft";
-    }
+    if (item.type === "approval") return "Create Outlook Draft";
     return item.primaryActionLabel;
   };
 
   const primaryDisabled =
     generateDraftReply.isPending ||
+    createOutlookDraft.isPending ||
     approveAction.isPending ||
-    Boolean(createdDraft) ||
-    (item.type === "email" && Boolean(draft));
+    Boolean(createdDraft);
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden sticky top-24">
-      <div className="px-6 py-5 border-b border-zinc-100">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className="border-b border-zinc-100 px-4 py-3">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-900">Decision Desk</h2>
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+            Auto-selected
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
             {item.type}
           </span>
-          {item.priority === "high" && (
-            <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
-              High Priority
-            </span>
-          )}
+          <span className={item.priority === "high" ? "rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700" : "rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600"}>
+            {item.priority} priority
+          </span>
         </div>
-        <h2 className="text-xl font-semibold text-zinc-900 leading-tight">{item.title}</h2>
-        {item.person && (
-          <p className="text-sm text-zinc-500 mt-1">
-            From: <span className="font-medium text-zinc-700">{item.person}</span>
-          </p>
-        )}
+        <h3 className="mt-2 truncate text-lg font-semibold text-zinc-900">{item.title}</h3>
+        {item.person && <p className="text-xs text-zinc-500">From: {item.person}</p>}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {draftError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="mb-3 flex gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{draftError}</span>
           </div>
         )}
 
         {createdDraft && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            Draft created in Outlook for {createdDraft.mailboxEmail}
+          <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            Draft saved to Outlook. Review and send from Outlook.
             {createdDraft.webLink && (
               <a
                 href={createdDraft.webLink}
@@ -173,104 +188,104 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
                 rel="noreferrer"
                 className="mt-2 inline-flex items-center gap-1 font-medium text-green-900 hover:underline"
               >
-                Open draft <ExternalLink className="h-3 w-3" />
+                Open Draft in Outlook <ExternalLink className="h-3 w-3" />
               </a>
             )}
           </div>
         )}
 
-        <div>
-          <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">AI Summary</h3>
-          <p className="text-sm text-zinc-800 bg-zinc-50 p-4 rounded-lg border border-zinc-100">
-            {item.description || "No summary available for this item."}
-          </p>
-        </div>
-
-        {item.type === "calendar" && (
-          <div>
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Meeting Details</h3>
-            <div className="flex items-center gap-2 text-sm text-zinc-700 mb-1">
-              <Calendar className="h-4 w-4" /> {item.timeLabel}
-            </div>
-            {(item.metadata as any)?.preparation_notes?.length > 0 && (
-              <div className="mt-3">
-                <p className="text-sm font-medium text-zinc-800 mb-1">Preparation Notes:</p>
-                <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-600">
-                  {(item.metadata as any).preparation_notes.map((note: string, idx: number) => (
-                    <li key={idx}>{note}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {item.type === "email" && (item.metadata as any)?.reason && (
-          <div>
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Why this matters</h3>
-            <p className="text-sm text-zinc-700">{(item.metadata as any).reason}</p>
-          </div>
-        )}
-
-        {draft && (
-          <div>
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Draft Preview</h3>
-            <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
-              <p className="font-medium">{draft.draftSubject}</p>
-              <p className="mt-1 text-xs">{draft.rationale}</p>
-              {draft.requiresApproval && <p className="mt-1 text-xs font-medium">Approval required before any Outlook draft is created.</p>}
-            </div>
-            <Textarea
-              value={draftBody}
-              onChange={(event) =>
-                setDraftState((state) =>
-                  state && state.itemId === item.id ? { ...state, body: event.target.value } : state
-                )
-              }
-              className="min-h-56 resize-none bg-white text-sm leading-6"
-            />
-          </div>
-        )}
-
-        {emailDraftPreview && (
-          <div>
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Draft Preview</h3>
-            <p className="whitespace-pre-wrap rounded-lg border border-zinc-100 bg-zinc-50 p-4 text-sm leading-6 text-zinc-800">
-              {emailDraftPreview.body || emailDraftPreview.body_preview}
+        <div className="space-y-3">
+          <section>
+            <h4 className="mb-1 text-xs font-semibold text-zinc-500">Why this matters</h4>
+            <p className="rounded-lg border border-zinc-100 bg-zinc-50 p-3 text-sm text-zinc-700">
+              {String(metadata.reason || item.description || "This item is in your priority feed and may need a decision.")}
             </p>
-          </div>
-        )}
+          </section>
+
+          <section>
+            <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+              <Sparkles className="h-3.5 w-3.5 text-blue-600" /> AI Summary
+            </h4>
+            <p className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              {summaryFor(item)}
+            </p>
+          </section>
+
+          {item.type === "email" && (
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+                  <Mail className="h-3.5 w-3.5 text-blue-600" /> Draft your reply
+                </h4>
+                {draft && (
+                  <details className="text-xs text-zinc-500">
+                    <summary className="cursor-pointer">Details</summary>
+                    <div className="mt-1 rounded-md border border-zinc-100 bg-zinc-50 p-2">
+                      <p>Confidence: {Math.round(draft.confidence * 100)}%</p>
+                      <p>{draft.rationale}</p>
+                    </div>
+                  </details>
+                )}
+              </div>
+
+              {draft ? (
+                <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                  <div className="border-b border-zinc-100 px-3 py-2 text-xs text-zinc-500">
+                    <p>To: {emailRecipients.join(", ")}</p>
+                    <p>Subject: {draft.draftSubject}</p>
+                  </div>
+                  <Textarea
+                    value={draftBody}
+                    onChange={(event) =>
+                      setDraftState((state) =>
+                        state && state.itemId === item.id ? { ...state, body: event.target.value } : state,
+                      )
+                    }
+                    className="min-h-44 resize-none border-0 bg-white text-sm leading-6 focus-visible:ring-0"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                  Generate a concise reply draft from the original Outlook message. The email will not be sent.
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       </div>
 
-      <div className="p-6 border-t border-zinc-100 bg-zinc-50">
-        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Suggested Action</h3>
-        <div className="flex flex-col gap-3">
+      <div className="border-t border-zinc-100 bg-zinc-50 p-4">
+        <div className="flex gap-2">
           <Button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
             size="lg"
-            onClick={handleAction}
+            onClick={() => void primaryAction()}
             disabled={primaryDisabled}
           >
-            <Check className="h-4 w-4 mr-2" />
-            {createdDraft
-              ? "Draft Created"
-              : generateDraftReply.isPending
-                ? "Generating..."
-                : approveAction.isPending
-                  ? "Creating..."
-                  : primaryLabel()}
+            <Check className="mr-2 h-4 w-4" />
+            {primaryLabel()}
           </Button>
-
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 bg-white" disabled={!draft || Boolean(createdDraft)}>
-              Edit Draft
-            </Button>
-            <Button variant="outline" className="flex-1 bg-white text-zinc-500 hover:text-red-600">
-              Dismiss
-            </Button>
-          </div>
+          {metadata.webLink && (
+            <a href={String(metadata.webLink)} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="lg" className="bg-white">
+                Open original
+              </Button>
+            </a>
+          )}
+          <Button variant="outline" size="lg" className="bg-white text-zinc-500">
+            Dismiss
+          </Button>
         </div>
       </div>
     </div>
   );
+}
+
+function summaryFor(item: ActionItem): string {
+  if (item.type === "email") {
+    return item.description
+      ? `${item.person || "The sender"} is asking for your input. ${item.description}`
+      : "This email likely needs a concise reply or clarification.";
+  }
+  return item.description || "NexusHub selected this item because it may need your attention.";
 }

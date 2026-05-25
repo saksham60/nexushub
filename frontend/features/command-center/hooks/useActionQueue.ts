@@ -39,6 +39,7 @@ export function useActionQueue() {
     items,
     filteredItems,
     counts: feedQuery.data?.counts,
+    topInsight: feedQuery.data?.topInsight,
     health: feedQuery.data?.health,
     mailboxEmail: feedQuery.data?.mailboxEmail,
     sourceErrors: feedQuery.data?.errors || {},
