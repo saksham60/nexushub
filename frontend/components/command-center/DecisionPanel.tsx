@@ -326,6 +326,16 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
       </div>
 
       <div className="border-t border-zinc-100 bg-zinc-50 p-4">
+        {item.type === "email" && draft && !createdDraft && (
+          <p className="mb-2 text-xs text-zinc-500">
+            Send unlocks after the draft is saved to Outlook.
+          </p>
+        )}
+        {item.type === "email" && createdDraft && !sentDraft && (
+          <p className="mb-2 text-xs text-zinc-500">
+            Draft saved. Click Send Email to send it from Outlook.
+          </p>
+        )}
         <div className="flex gap-2">
           <Button
             className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
@@ -336,6 +346,17 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
             <Check className="mr-2 h-4 w-4" />
             {primaryLabel()}
           </Button>
+          {item.type === "email" && draft && !createdDraft && (
+            <Button
+              variant="outline"
+              size="lg"
+              className="bg-white"
+              disabled
+              title="Save the draft to Outlook before sending."
+            >
+              Send Email
+            </Button>
+          )}
           {metadata.webLink && (
             <a href={String(metadata.webLink)} target="_blank" rel="noreferrer">
               <Button variant="outline" size="lg" className="bg-white">

@@ -11,6 +11,7 @@ export function MicrosoftConnectionCard() {
   const { data: status, isLoading } = useMicrosoftStatus();
   const connect = useConnectMicrosoft();
   const disconnect = useDisconnectMicrosoft();
+  const scopes = status?.connected ? status.scopes || [] : [];
 
   return (
     <Card>
@@ -60,11 +61,13 @@ export function MicrosoftConnectionCard() {
             <div>
               <h4 className="text-sm font-medium text-zinc-900 mb-2">Granted Permissions</h4>
               <div className="flex flex-wrap gap-2">
-                {status.scopes.map(scope => (
+                {scopes.length ? scopes.map(scope => (
                   <Badge key={scope} variant="secondary" className="font-normal text-xs bg-zinc-100 text-zinc-600">
                     {scope}
                   </Badge>
-                ))}
+                )) : (
+                  <span className="text-xs text-zinc-500">No granted scopes were returned by the backend.</span>
+                )}
               </div>
             </div>
           </div>

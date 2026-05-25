@@ -1,8 +1,8 @@
 "use client";
 
 import { useSession } from "@/features/session/hooks";
-import { useRouter } from "next/navigation";
 import { LogOut, Settings, LayoutGrid, Mail, ChevronDown } from "lucide-react";
+import Link from "next/link";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,11 +12,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { useBackendHealth } from "@/features/health/hooks";
 import { useMicrosoftStatus } from "@/features/auth/hooks";
 
 export function ExecutiveTopRail() {
-  const router = useRouter();
   const { data: session } = useSession();
   const { data: health } = useBackendHealth();
   const { data: microsoftStatus } = useMicrosoftStatus();
@@ -62,6 +62,11 @@ export function ExecutiveTopRail() {
           </div>
 
           <div className="flex items-center gap-4">
+            <Link href="/settings" aria-label="Open settings" title="Settings">
+              <Button variant="ghost" size="icon-lg" className="text-zinc-500 hover:text-zinc-900">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
             {session?.status === "ok" && (
               <DropdownMenu>
                 <DropdownMenuTrigger className="outline-none">
@@ -90,10 +95,13 @@ export function ExecutiveTopRail() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => router.push("/settings")}>
+                  <Link
+                    href="/settings"
+                    className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-zinc-900 outline-none hover:bg-zinc-100 focus:bg-zinc-100"
+                  >
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
-                  </DropdownMenuItem>
+                  </Link>
                   <DropdownMenuItem className="text-red-600 focus:bg-red-50 focus:text-red-700">
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Disconnect</span>
