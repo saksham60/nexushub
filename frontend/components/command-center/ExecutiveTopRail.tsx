@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useSession } from "@/features/session/hooks";
+import { useRouter } from "next/navigation";
 import { LogOut, Settings, LayoutGrid, Server, Mail } from "lucide-react";
 import {
   DropdownMenu,
@@ -12,20 +12,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { MicrosoftConnectionCard } from "@/components/settings/MicrosoftConnectionCard";
-import { AgentPreferencesCard } from "@/components/settings/AgentPreferencesCard";
-import { SecurityCard } from "@/components/settings/SecurityCard";
 import { useCommandCenterFeed } from "@/features/command-center/hooks/useActionQueue";
 
 export function ExecutiveTopRail() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const router = useRouter();
   const { data: session } = useSession();
   const { data: feed, isError: feedError } = useCommandCenterFeed();
   const userName = session?.status === "ok" ? session.user.display_name : "User";
@@ -83,7 +73,7 @@ export function ExecutiveTopRail() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                  <DropdownMenuItem onClick={() => router.push("/settings")}>
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
                   </DropdownMenuItem>
@@ -97,22 +87,6 @@ export function ExecutiveTopRail() {
           </div>
         </div>
       </header>
-
-      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-2xl" side="right">
-          <SheetHeader className="border-b border-zinc-200 p-6">
-            <SheetTitle>Settings</SheetTitle>
-            <SheetDescription>
-              Manage the connected Microsoft account and NexusHub session.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 p-6">
-            <MicrosoftConnectionCard />
-            <AgentPreferencesCard />
-            <SecurityCard />
-          </div>
-        </SheetContent>
-      </Sheet>
     </>
   );
 }
