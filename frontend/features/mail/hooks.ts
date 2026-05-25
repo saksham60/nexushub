@@ -40,8 +40,14 @@ export function useCreateDraftPreview() {
   });
 }
 
-export function useCreateOutlookDraft() {
+type MailMutationOptions = {
+  toastOnSuccess?: boolean;
+  toastOnError?: boolean;
+};
+
+export function useCreateOutlookDraft(options: MailMutationOptions = {}) {
   const queryClient = useQueryClient();
+  const { toastOnSuccess = true, toastOnError = true } = options;
 
   return useMutation({
     mutationFn: (payload: DraftCreateRequest) =>
@@ -52,15 +58,21 @@ export function useCreateOutlookDraft() {
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
-      toast.success(`Draft created in Outlook for ${data.mailboxEmail}`);
+      if (toastOnSuccess) {
+        toast.success(`Draft created in Outlook for ${data.mailboxEmail}`);
+      }
     },
     onError: (error) => {
-      toast.error(getFriendlyErrorMessage(error));
+      if (toastOnError) {
+        toast.error(getFriendlyErrorMessage(error));
+      }
     },
   });
 }
 
-export function useSendOutlookDraft() {
+export function useSendOutlookDraft(options: MailMutationOptions = {}) {
+  const { toastOnSuccess = true, toastOnError = true } = options;
+
   return useMutation({
     mutationFn: (payload: DraftSendRequest) =>
       apiClient.post<DraftSendResponse>(endpoints.mailDraftSend, {
@@ -69,10 +81,14 @@ export function useSendOutlookDraft() {
         simulate: process.env.NEXT_PUBLIC_DEMO_MODE === "true",
       }),
     onSuccess: (data) => {
-      toast.success(`Email sent from Outlook for ${data.mailboxEmail}`);
+      if (toastOnSuccess) {
+        toast.success(`Email sent from Outlook for ${data.mailboxEmail}`);
+      }
     },
     onError: (error) => {
-      toast.error(getFriendlyErrorMessage(error));
+      if (toastOnError) {
+        toast.error(getFriendlyErrorMessage(error));
+      }
     },
   });
 }

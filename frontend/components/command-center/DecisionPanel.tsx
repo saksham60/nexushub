@@ -21,8 +21,9 @@ interface DecisionPanelProps {
 export function DecisionPanel({ item }: DecisionPanelProps) {
   const approveAction = useApproveAction();
   const generateDraftReply = useGenerateDraftReply();
-  const createOutlookDraft = useCreateOutlookDraft();
-  const sendOutlookDraft = useSendOutlookDraft();
+  const createOutlookDraft = useCreateOutlookDraft({ toastOnSuccess: false, toastOnError: false });
+  const sendOutlookDraft = useSendOutlookDraft({ toastOnSuccess: false, toastOnError: false });
+  const [mailActionMode, setMailActionMode] = useState<"save" | "send" | null>(null);
   const [draftState, setDraftState] = useState<{
     itemId: string;
     preview: DraftReplyResponse;
@@ -109,31 +110,54 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     setDraftErrorState(null);
     setSentDraftState(null);
     setCalendarUpdateState(null);
+    setMailActionMode("save");
     try {
-      const created = await createOutlookDraft.mutateAsync({
-        originalMessageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
-        subject: draft.draftSubject,
-        recipients: emailRecipients,
-        draftBody,
-        mailboxEmail: String(metadata.mailboxEmail || ""),
-        approvalId: null,
-      });
+      const created = await createDraftInOutlook();
       setCreatedDraftState({ itemId: item.id, draft: created });
     } catch (error) {
       setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
+    } finally {
+      setMailActionMode(null);
     }
   };
 
-  const sendSavedDraft = async () => {
-    if (!createdDraft?.outlookDraftId || item.type !== "email") return;
+  const createDraftInOutlook = async () => {
+    if (!draft || item.type !== "email") {
+      throw new Error("Draft is required before creating an Outlook draft.");
+    }
+    return createOutlookDraft.mutateAsync({
+      originalMessageId: String(metadata.messageId || item.id.replace(/^mail_/, "")),
+      subject: draft.draftSubject,
+      recipients: emailRecipients,
+      draftBody,
+      mailboxEmail: String(metadata.mailboxEmail || ""),
+      approvalId: null,
+    });
+  };
+
+  const sendEmail = async () => {
+    if (!draft || item.type !== "email") return;
     setDraftErrorState(null);
+    setCalendarUpdateState(null);
+    setMailActionMode("send");
     try {
+      const draftToSend = createdDraft?.outlookDraftId ? createdDraft : await createDraftInOutlook();
+      if (!draftToSend.outlookDraftId) {
+        setDraftErrorState({
+          itemId: item.id,
+          message: "Outlook did not return a draft id, so NexusHub could not send this email.",
+        });
+        return;
+      }
+      setCreatedDraftState({ itemId: item.id, draft: draftToSend });
       const sent = await sendOutlookDraft.mutateAsync({
-        outlookDraftId: createdDraft.outlookDraftId,
+        outlookDraftId: draftToSend.outlookDraftId,
       });
       setSentDraftState({ itemId: item.id, sent });
     } catch (error) {
       setDraftErrorState({ itemId: item.id, message: getFriendlyErrorMessage(error) });
+    } finally {
+      setMailActionMode(null);
     }
   };
 
@@ -171,8 +195,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const primaryAction = async () => {
     if (item.type === "email") {
       if (!draft) await generateDraft();
-      else if (!createdDraft) await saveDraftToOutlook();
-      else if (!sentDraft) await sendSavedDraft();
+      else if (!sentDraft) await sendEmail();
       return;
     }
     if (item.type === "approval") await approveExistingApproval();
@@ -180,13 +203,15 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
 
   const primaryLabel = () => {
     if (item.type === "email" && sentDraft) return "Email sent";
-    if (sendOutlookDraft.isPending) return "Sending...";
+    if (item.type === "email" && mailActionMode === "send" && (sendOutlookDraft.isPending || createOutlookDraft.isPending)) {
+      return "Sending...";
+    }
     if (item.type === "email" && createdDraft) return "Send Email";
     if (createdDraft) return "Draft saved";
     if (updatedCalendar) return "Meeting updated";
-    if (createOutlookDraft.isPending) return "Saving...";
+    if (item.type === "email" && mailActionMode === "save" && createOutlookDraft.isPending) return "Saving...";
     if (generateDraftReply.isPending) return "Drafting...";
-    if (item.type === "email" && draft) return "Save Draft to Outlook";
+    if (item.type === "email" && draft) return "Send Email";
     if (item.type === "email") return "Draft Reply";
     if (item.type === "approval") return approvalPrimaryLabel(metadata.action_type);
     return item.primaryActionLabel;
@@ -306,7 +331,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
                   </div>
                   <Textarea
                     value={draftBody}
-                    disabled={Boolean(createdDraft)}
+                    disabled={Boolean(createdDraft || sentDraft)}
                     onChange={(event) =>
                       setDraftState((state) =>
                         state && state.itemId === item.id ? { ...state, body: event.target.value } : state,
@@ -317,7 +342,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-                  Generate a concise reply draft from the original Outlook message. The email will not be sent.
+                  Generate a concise reply draft from the original Outlook message before sending or saving.
                 </div>
               )}
             </section>
@@ -328,17 +353,17 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
       <div className="border-t border-zinc-100 bg-zinc-50 p-4">
         {item.type === "email" && draft && !createdDraft && (
           <p className="mb-2 text-xs text-zinc-500">
-            Send unlocks after the draft is saved to Outlook.
+            Send Email creates the Outlook reply and sends it. Save as Draft keeps it in Outlook without sending.
           </p>
         )}
         {item.type === "email" && createdDraft && !sentDraft && (
           <p className="mb-2 text-xs text-zinc-500">
-            Draft saved. Click Send Email to send it from Outlook.
+            Draft saved in Outlook. Send Email will send that saved draft.
           </p>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
-            className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+            className="min-w-44 flex-1 bg-blue-600 text-white hover:bg-blue-700"
             size="lg"
             onClick={() => void primaryAction()}
             disabled={primaryDisabled}
@@ -346,15 +371,19 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
             <Check className="mr-2 h-4 w-4" />
             {primaryLabel()}
           </Button>
-          {item.type === "email" && draft && !createdDraft && (
+          {item.type === "email" && draft && !sentDraft && (
             <Button
               variant="outline"
               size="lg"
               className="bg-white"
-              disabled
-              title="Save the draft to Outlook before sending."
+              onClick={() => void saveDraftToOutlook()}
+              disabled={primaryDisabled || Boolean(createdDraft)}
             >
-              Send Email
+              {createdDraft
+                ? "Draft Saved"
+                : mailActionMode === "save" && createOutlookDraft.isPending
+                  ? "Saving..."
+                  : "Save as Draft"}
             </Button>
           )}
           {metadata.webLink && (
