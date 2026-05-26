@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Literal
+from typing import Any
+from langsmith import traceable, Literal
 
 from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
 from nexushub_mcp.mock import mock_mail
@@ -29,6 +30,7 @@ AUTOMATED_ADDRESS_MARKERS = ("noreply", "donotreply", "mailerdaemon")
 
 def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="Find emails that likely require the user to reply.")
+    @traceable(run_type="tool")
     async def mail_find_needs_reply(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -86,6 +88,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Find emails where the user may need to approve or review something.")
+    @traceable(run_type="tool")
     async def mail_find_awaiting_approval(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -148,6 +151,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Summarize a selected email thread.")
+    @traceable(run_type="tool")
     async def mail_summarize_thread(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -210,6 +214,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Create a draft reply preview. This never sends mail in the MVP.")
+    @traceable(run_type="tool")
     async def mail_create_draft_reply(
         to: str | list[str],
         subject: str,
@@ -326,6 +331,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Mark selected mail as read. This write action requires approval first.")
+    @traceable(run_type="tool")
     async def mail_mark_as_read(
         messageIds: list[str],
         user_id: str | None = None,

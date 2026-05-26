@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from langsmith import traceable
 
 from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
 from nexushub_mcp.server.context import NexusHubRuntime
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 
 def register_auth_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="Check whether Microsoft Graph authentication is connected.")
+    @traceable(run_type="tool")
     async def auth_get_status(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -55,6 +57,7 @@ def register_auth_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Get the Microsoft connect URL owned by the NexusHub backend.")
+    @traceable(run_type="tool")
     async def auth_get_login_url() -> dict[str, Any]:
         log_tool_call(logger, "auth_get_login_url", {"mode": runtime.settings.mode})
         return ok(runtime.settings.source, {"connect_url": "/auth/microsoft/start"})

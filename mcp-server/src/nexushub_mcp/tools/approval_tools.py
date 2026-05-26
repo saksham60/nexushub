@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from langsmith import traceable
 
 from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
 from nexushub_mcp.server.context import NexusHubRuntime
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 
 def register_approval_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="List pending approval-required actions created by NexusHub tools.")
+    @traceable(run_type="tool")
     async def approval_list_pending(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -39,6 +41,7 @@ def register_approval_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Execute a previously approved action by approvalId.")
+    @traceable(run_type="tool")
     async def approval_execute(
         approvalId: str,
         approved: bool,

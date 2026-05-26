@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
+from langsmith import traceable, Literal
 
 from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
 from nexushub_mcp.mock import mock_docs
@@ -18,6 +19,7 @@ logger = get_logger(__name__)
 
 def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="List recent files from OneDrive or SharePoint.")
+    @traceable(run_type="tool")
     async def docs_list_recent_files(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -41,6 +43,7 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         return ok("microsoft_graph", data.get("data") or data)
 
     @mcp.tool(description="Analyze an uploaded file by document id.")
+    @traceable(run_type="tool")
     async def docs_analyze_uploaded_file(
         fileName: str,
         analysisGoal: str | None = None,
@@ -71,6 +74,7 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         return ok("nexushub_backend", data)
 
     @mcp.tool(description="Build a report outline from document analysis.")
+    @traceable(run_type="tool")
     async def docs_build_report(
         fileName: str,
         reportType: ReportType = "executive_summary",

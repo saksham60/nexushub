@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from langsmith import traceable
 
 from nexushub_mcp.mock import mock_teams
 from nexushub_mcp.server.context import NexusHubRuntime
@@ -16,6 +17,7 @@ ACTION_PATTERNS = ("will", "need to", "needs to", "action", "follow up", "by fri
 
 def register_teams_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="Find urgent Teams mentions or channel messages requiring attention.")
+    @traceable(run_type="tool")
     async def teams_get_urgent_mentions(days: int = 3, maxResults: int = 10) -> dict[str, Any]:
         log_tool_call(logger, "teams_get_urgent_mentions", {"days": days, "maxResults": maxResults})
         days = max(1, min(days, 30))
@@ -25,6 +27,7 @@ def register_teams_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         return not_implemented("Teams urgent mentions are now fetched directly by the Command Center backend.")
 
     @mcp.tool(description="Return recent Teams meeting summaries and action items.")
+    @traceable(run_type="tool")
     async def teams_get_meeting_summaries(days: int = 7, maxResults: int = 5) -> dict[str, Any]:
         log_tool_call(
             logger, "teams_get_meeting_summaries", {"days": days, "maxResults": maxResults}
@@ -36,6 +39,7 @@ def register_teams_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         return not_implemented("Teams transcript integration is not enabled. Transcript summaries require additional admin-approved Microsoft Graph permissions.")
 
     @mcp.tool(description="Extract action items from Teams meeting or chat text with simple rules.")
+    @traceable(run_type="tool")
     async def teams_extract_action_items(text: str) -> dict[str, Any]:
         log_tool_call(logger, "teams_extract_action_items", {"textLength": len(text)})
         items = extract_action_items_from_text(text)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from langsmith import traceable
 
 from nexushub_mcp.clients.backend_internal_client import BackendInternalClientError
 from nexushub_mcp.mock import mock_calendar
@@ -14,6 +15,7 @@ logger = get_logger(__name__)
 
 def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @mcp.tool(description="Get today's calendar agenda.")
+    @traceable(run_type="tool")
     async def calendar_get_today_agenda(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -36,6 +38,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         return ok("microsoft_graph", data.get("data") or data)
 
     @mcp.tool(description="Suggest focus blocks based on the user's calendar.")
+    @traceable(run_type="tool")
     async def calendar_find_focus_blocks(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -84,6 +87,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Prepare a brief for an upcoming meeting.")
+    @traceable(run_type="tool")
     async def calendar_prepare_meeting_brief(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -148,6 +152,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Prepare an approval-gated request to reschedule an Outlook meeting.")
+    @traceable(run_type="tool")
     async def calendar_reschedule_event(
         user_id: str | None = None,
         workspace_id: str | None = None,
@@ -237,6 +242,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         )
 
     @mcp.tool(description="Prepare an approval-gated request to schedule a new Outlook meeting.")
+    @traceable(run_type="tool")
     async def calendar_schedule_meeting(
         user_id: str | None = None,
         workspace_id: str | None = None,
