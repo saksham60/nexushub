@@ -453,10 +453,16 @@ function summaryFor(item: ActionItem): string {
   const metadata = (item.metadata || {}) as Record<string, any>;
   const preview = metadata.preview && typeof metadata.preview === "object" ? metadata.preview : {};
   if (item.type === "approval" && preview.kind === "calendar_reschedule") {
-    return `${preview.subject || "This meeting"} is ready to move to ${new Date(preview.targetStartTime).toLocaleString()}.`;
+    const target = preview.targetStartTime
+      ? new Date(preview.targetStartTime).toLocaleString()
+      : preview.to || "the requested time";
+    return `${preview.subject || "This meeting"} is ready to move to ${target}.`;
   }
   if (item.type === "approval" && preview.kind === "calendar_schedule") {
-    return `${preview.subject || "This meeting"} will be scheduled from ${new Date(preview.targetStartTime).toLocaleString()}.`;
+    const target = preview.targetStartTime
+      ? new Date(preview.targetStartTime).toLocaleString()
+      : "the requested time";
+    return `${preview.subject || "This meeting"} will be scheduled for ${target}.`;
   }
   if (item.type === "email") {
     return item.description

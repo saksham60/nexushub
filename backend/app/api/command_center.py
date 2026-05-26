@@ -434,6 +434,8 @@ def _approval_action_label(action_type: str) -> str:
         return "Create Draft"
     if action_type == "calendar.reschedule_event":
         return "Approve Reschedule"
+    if action_type == "calendar.schedule_meeting":
+        return "Approve Schedule"
     return "Review"
 
 

@@ -153,10 +153,14 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         workspace_id: str | None = None,
         eventId: str | None = None,
         meetingTitle: str | None = None,
+        sourceTime: str | None = None,
         targetStartTime: str | None = None,
         targetEndTime: str | None = None,
+        date: str | None = None,
         timezone: str = "Asia/Kolkata",
+        reason: str | None = None,
     ) -> dict[str, Any]:
+        del sourceTime, date, reason
         log_tool_call(
             logger,
             "calendar_reschedule_event",
