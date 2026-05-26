@@ -263,11 +263,28 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
             <span>{draftError}</span>
           </div>
         )}
-
         {recipientWarning && (
           <div className="mb-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{recipientWarning}</span>
+          </div>
+        )}
+
+        {metadata.preview?.conflictWarning && !updatedCalendar && (
+          <div className="mb-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold">Conflict Detected</p>
+              <p>This overlaps with: {metadata.preview.conflictWarning.subject} at {metadata.preview.conflictWarning.time}.</p>
+              <p className="mt-1 text-xs">Choose Approve Anyway to double-book, or Dismiss to pick another time.</p>
+            </div>
+          </div>
+        )}
+
+        {metadata.preview?.recurringWarning && !updatedCalendar && (
+          <div className="mb-3 flex gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>This is a recurring meeting series. NexusHub will only modify this single occurrence.</span>
           </div>
         )}
 
@@ -364,6 +381,19 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
               )}
             </section>
           )}
+
+          {item.type === "team" && (
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
+                  <AlertCircle className="h-3.5 w-3.5 text-blue-600" /> Action Required
+                </h4>
+              </div>
+              <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                NexusHub cannot send Teams messages directly yet. You can draft an email reply or schedule a meeting to follow up.
+              </div>
+            </section>
+          )}
         </div>
       </div>
 
@@ -406,7 +436,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           {metadata.webLink && (
             <a href={String(metadata.webLink)} target="_blank" rel="noreferrer">
               <Button variant="outline" size="lg" className="bg-white">
-                Open original
+                {item.type === "team" ? "Open in Teams" : "Open original"}
               </Button>
             </a>
           )}
@@ -423,12 +453,20 @@ function summaryFor(item: ActionItem): string {
   const metadata = (item.metadata || {}) as Record<string, any>;
   const preview = metadata.preview && typeof metadata.preview === "object" ? metadata.preview : {};
   if (item.type === "approval" && preview.kind === "calendar_reschedule") {
-    return `${preview.subject || "This meeting"} is ready to move from ${preview.from} to ${preview.to}.`;
+    return `${preview.subject || "This meeting"} is ready to move to ${new Date(preview.targetStartTime).toLocaleString()}.`;
+  }
+  if (item.type === "approval" && preview.kind === "calendar_schedule") {
+    return `${preview.subject || "This meeting"} will be scheduled from ${new Date(preview.targetStartTime).toLocaleString()}.`;
   }
   if (item.type === "email") {
     return item.description
       ? `${item.person || "The sender"} is asking for your input. ${item.description}`
       : "This email likely needs a concise reply or clarification.";
+  }
+  if (item.type === "team") {
+    if (metadata.isUrgent) return `${item.person || "Someone"} sent an urgent message in Teams.`;
+    if (metadata.isMention) return `${item.person || "Someone"} mentioned you in Teams.`;
+    return "This Teams message requires your attention.";
   }
   return item.description || "NexusHub selected this item because it may need your attention.";
 }
@@ -438,11 +476,18 @@ function whyThisMatters(item: ActionItem, metadata: Record<string, any>): string
   if (item.type === "approval" && preview.kind === "calendar_reschedule") {
     return `This calendar change will update Outlook. Review before moving ${preview.subject || "the meeting"}.`;
   }
+  if (item.type === "approval" && preview.kind === "calendar_schedule") {
+    return `This calendar change will create a new event in Outlook. Review before scheduling.`;
+  }
+  if (item.type === "team") {
+    return "An urgent keyword or mention was detected in this recent Teams chat.";
+  }
   return String(metadata.reason || item.description || "This item is in your priority feed and may need a decision.");
 }
 
 function approvalPrimaryLabel(actionType: unknown): string {
   if (actionType === "calendar.reschedule_event") return "Approve Reschedule";
+  if (actionType === "calendar.schedule_meeting") return "Approve Schedule";
   if (actionType === "mail.create_draft_reply") return "Create Outlook Draft";
   return "Approve Action";
 }

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import httpx
+from langsmith import traceable
 
 from app.config import Settings, get_settings
 from app.core.errors import ConfigurationError, GraphServiceError
@@ -13,6 +14,7 @@ class OpenAILLMService:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
+    @traceable(run_type="llm")
     async def complete_text(self, *, system_prompt: str, user_prompt: str) -> str:
         api_key = self._settings.openai_api_key
         model = self._settings.openai_model

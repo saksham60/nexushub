@@ -96,3 +96,19 @@ class DocumentReportRequest(BaseModel):
     reportTitle: str
     instructions: str = ""
     format: str = "executive_summary"
+
+
+class CalendarScheduleOrchestrateRequest(UserWorkspaceRequest):
+    subject: str
+    start_time: str
+    end_time: str | None = None
+    attendees: list[str] = Field(default_factory=list)
+    timezone: str
+
+
+class CalendarRescheduleOrchestrateRequest(UserWorkspaceRequest):
+    event_id: str | None = None
+    meeting_title: str | None = None
+    target_start_time: str
+    target_end_time: str | None = None
+    timezone: str

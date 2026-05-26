@@ -11,3 +11,4 @@ langgraph
 pypdf
 python-docx
 openpyxl
+langsmith

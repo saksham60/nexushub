@@ -22,6 +22,8 @@ MICROSOFT_SCOPES = (
     "Mail.Send",
     "Calendars.Read",
     "Calendars.ReadWrite",
+    "Chat.Read",
+    "People.Read",
     "Files.Read.All",
 )
 

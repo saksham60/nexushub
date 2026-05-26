@@ -93,8 +93,8 @@ class CalendarRescheduleTests(unittest.IsolatedAsyncioTestCase):
                         "payload": {
                             "eventId": "event-1",
                             "subject": "Budget Review",
-                            "newStart": "2026-05-25T13:00:00+05:30",
-                            "newEnd": "2026-05-25T13:30:00+05:30",
+                            "targetStartTime": "2026-05-25T13:00:00+05:30",
+                            "targetEndTime": "2026-05-25T13:30:00+05:30",
                             "timezone": "Asia/Kolkata",
                         },
                     },

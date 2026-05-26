@@ -74,6 +74,18 @@ TOOL_METADATA: dict[str, dict[str, Any]] = {
         },
         "requiresApproval": True,
     },
+    "calendar_schedule_meeting": {
+        "category": "calendar",
+        "description": "Prepare an approval-gated Outlook meeting invite.",
+        "inputSchema": {
+            "subject": "string",
+            "startTime": "ISO datetime or natural time",
+            "endTime": "ISO datetime or natural time",
+            "attendees": "string[]",
+            "timezone": "IANA timezone",
+        },
+        "requiresApproval": True,
+    },
     "docs_list_recent_files": {
         "category": "documents",
         "description": "List recent OneDrive or SharePoint files.",

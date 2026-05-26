@@ -22,7 +22,7 @@ def register_teams_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         max_results = max(1, min(maxResults, 50))
         if runtime.settings.mode == "mock":
             return ok("mock", mock_teams.urgent_mentions(days=days, max_results=max_results))
-        return not_implemented("Teams Graph permissions will be enabled in a later phase.")
+        return not_implemented("Teams urgent mentions are now fetched directly by the Command Center backend.")
 
     @mcp.tool(description="Return recent Teams meeting summaries and action items.")
     async def teams_get_meeting_summaries(days: int = 7, maxResults: int = 5) -> dict[str, Any]:
@@ -33,7 +33,7 @@ def register_teams_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         max_results = max(1, min(maxResults, 20))
         if runtime.settings.mode == "mock":
             return ok("mock", mock_teams.meeting_summaries(days=days, max_results=max_results))
-        return not_implemented("Teams Graph permissions will be enabled in a later phase.")
+        return not_implemented("Teams transcript integration is not enabled. Transcript summaries require additional admin-approved Microsoft Graph permissions.")
 
     @mcp.tool(description="Extract action items from Teams meeting or chat text with simple rules.")
     async def teams_extract_action_items(text: str) -> dict[str, Any]:

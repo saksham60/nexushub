@@ -8,8 +8,11 @@ from app.models.schemas import (
     RecentFilesRequest,
     RecentMailRequest,
     UserWorkspaceRequest,
+    CalendarScheduleOrchestrateRequest,
+    CalendarRescheduleOrchestrateRequest,
 )
 from app.services.microsoft_graph_service import MicrosoftGraphService
+from app.services.calendar_orchestration_service import CalendarOrchestrationService
 
 router = APIRouter(
     prefix="/internal/graph", dependencies=[Depends(verify_internal_service_token)]
@@ -67,5 +70,37 @@ async def files_recent(payload: RecentFilesRequest) -> dict[str, object]:
                 payload.user_id, payload.workspace_id, payload.top
             )
         }
+    except NexusHubError as exc:
+        raise _handle_error(exc) from exc
+
+
+@router.post("/calendar/orchestrate/schedule")
+async def calendar_orchestrate_schedule(payload: CalendarScheduleOrchestrateRequest) -> dict[str, object]:
+    try:
+        return await CalendarOrchestrationService().prepare_schedule_approval(
+            user_id=payload.user_id,
+            workspace_id=payload.workspace_id,
+            subject=payload.subject,
+            start_time=payload.start_time,
+            end_time=payload.end_time,
+            attendees=payload.attendees,
+            timezone=payload.timezone,
+        )
+    except NexusHubError as exc:
+        raise _handle_error(exc) from exc
+
+
+@router.post("/calendar/orchestrate/reschedule")
+async def calendar_orchestrate_reschedule(payload: CalendarRescheduleOrchestrateRequest) -> dict[str, object]:
+    try:
+        return await CalendarOrchestrationService().prepare_reschedule_approval(
+            user_id=payload.user_id,
+            workspace_id=payload.workspace_id,
+            event_id=payload.event_id,
+            meeting_title=payload.meeting_title,
+            target_start_time=payload.target_start_time,
+            target_end_time=payload.target_end_time,
+            timezone=payload.timezone,
+        )
     except NexusHubError as exc:
         raise _handle_error(exc) from exc

@@ -153,12 +153,9 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         workspace_id: str | None = None,
         eventId: str | None = None,
         meetingTitle: str | None = None,
-        sourceTime: str | None = None,
         targetStartTime: str | None = None,
         targetEndTime: str | None = None,
-        date: str | None = None,
         timezone: str = "Asia/Kolkata",
-        reason: str | None = None,
     ) -> dict[str, Any]:
         log_tool_call(
             logger,
@@ -166,7 +163,6 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             {
                 "hasEventId": bool(eventId),
                 "hasMeetingTitle": bool(meetingTitle),
-                "hasSourceTime": bool(sourceTime),
                 "hasTargetStartTime": bool(targetStartTime),
                 "hasUserId": bool(user_id),
             },
@@ -178,58 +174,146 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
                 "Ask again with a target time, for example: reschedule my 12 PM meeting to 1 PM.",
                 source="microsoft_graph" if runtime.settings.mode != "mock" else "mock",
             )
-        payload = {
-            "eventId": eventId,
-            "meetingTitle": meetingTitle,
-            "sourceTime": sourceTime,
-            "targetStartTime": targetStartTime,
-            "targetEndTime": targetEndTime,
-            "date": date,
-            "timezone": timezone,
-            "reason": reason,
-        }
         if runtime.settings.mode == "mock":
             return approval_required(
                 "mock",
                 action_type="calendar.reschedule_event",
                 title="Review meeting reschedule",
-                preview=f"Move {meetingTitle or 'the selected meeting'} to {targetStartTime}.",
-                payload=payload,
+                preview={"kind": "calendar_reschedule", "subject": meetingTitle, "targetStartTime": targetStartTime},
+                payload={"eventId": eventId, "targetStartTime": targetStartTime},
                 approval_id="demo_calendar_reschedule",
             )
         missing = ensure_user_id(runtime.settings.mode, user_id)
         if missing:
             return missing
-        if not eventId:
-            return error(
-                "missing_event_id",
-                "A Microsoft event id is required to create a calendar reschedule approval through MCP.",
-                "Use the NexusHub backend agent command flow so it can resolve the meeting first.",
-                source="microsoft_graph",
+            
+        try:
+            result = await runtime.backend_client.prepare_calendar_reschedule(
+                user_id=user_id or "",
+                workspace_id=workspace_id,
+                event_id=eventId,
+                meeting_title=meetingTitle,
+                target_start_time=targetStartTime,
+                target_end_time=targetEndTime,
+                timezone=timezone,
             )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+            
+        if result.get("error"):
+            return error(
+                result.get("type", "calendar_error"),
+                result.get("message", "Failed to prepare reschedule."),
+                "Try again or check your permissions.",
+                source="microsoft_graph"
+            )
+            
+        if result.get("clarification_required"):
+            return ok("microsoft_graph", {"clarification": result.get("message")})
+            
         try:
             approval = await runtime.backend_client.create_approval(
                 user_id=user_id or "",
                 workspace_id=workspace_id,
                 tool_name="calendar_reschedule_event",
                 action_type="calendar.reschedule_event",
-                payload=payload,
-                preview={
-                    "kind": "calendar_reschedule",
-                    "title": "Review meeting reschedule",
-                    "subject": meetingTitle or "Meeting",
-                    "from": sourceTime or "current time",
-                    "to": targetStartTime,
-                },
+                payload=result.get("payload", {}),
+                preview=result.get("preview", {}),
             )
         except BackendInternalClientError as exc:
             return exc.to_mcp_response()
-        approval_id = str(approval.get("approval_id") or approval.get("id") or "")
+            
         return approval_required(
             "microsoft_graph",
             action_type="calendar.reschedule_event",
-            title="Review meeting reschedule",
-            preview=f"Move {meetingTitle or 'the selected meeting'} to {targetStartTime}.",
-            payload=payload,
-            approval_id=approval_id,
+            title=result.get("preview", {}).get("title", "Review meeting reschedule"),
+            preview=result.get("preview", {}),
+            payload=result.get("payload", {}),
+            approval_id=str(approval.get("approval_id") or approval.get("id") or ""),
+        )
+
+    @mcp.tool(description="Prepare an approval-gated request to schedule a new Outlook meeting.")
+    async def calendar_schedule_meeting(
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        subject: str | None = None,
+        startTime: str | None = None,
+        endTime: str | None = None,
+        attendees: list[str] | None = None,
+        timezone: str = "Asia/Kolkata",
+    ) -> dict[str, Any]:
+        log_tool_call(
+            logger,
+            "calendar_schedule_meeting",
+            {
+                "hasSubject": bool(subject),
+                "hasStartTime": bool(startTime),
+                "attendeeCount": len(attendees or []),
+            },
+        )
+        if not subject or not startTime:
+            return error(
+                "missing_meeting_details",
+                "A subject and start time are required.",
+                "Ask again with a subject and time, for example: schedule a sync with John at 2pm.",
+                source="microsoft_graph" if runtime.settings.mode != "mock" else "mock",
+            )
+        
+        if runtime.settings.mode == "mock":
+            return approval_required(
+                "mock",
+                action_type="calendar.schedule_meeting",
+                title="Review meeting schedule",
+                preview={"kind": "calendar_schedule", "subject": subject, "targetStartTime": startTime},
+                payload={"subject": subject, "targetStartTime": startTime},
+                approval_id="demo_calendar_schedule",
+            )
+            
+        missing = ensure_user_id(runtime.settings.mode, user_id)
+        if missing:
+            return missing
+            
+        try:
+            result = await runtime.backend_client.prepare_calendar_schedule(
+                user_id=user_id or "",
+                workspace_id=workspace_id,
+                subject=subject,
+                start_time=startTime,
+                end_time=endTime,
+                attendees=attendees or [],
+                timezone=timezone,
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+            
+        if result.get("error"):
+            return error(
+                result.get("type", "calendar_error"),
+                result.get("message", "Failed to prepare schedule."),
+                "Try again or check your permissions.",
+                source="microsoft_graph"
+            )
+            
+        if result.get("clarification_required"):
+            return ok("microsoft_graph", {"clarification": result.get("message")})
+            
+        try:
+            approval = await runtime.backend_client.create_approval(
+                user_id=user_id or "",
+                workspace_id=workspace_id,
+                tool_name="calendar_schedule_meeting",
+                action_type="calendar.schedule_meeting",
+                payload=result.get("payload", {}),
+                preview=result.get("preview", {}),
+            )
+        except BackendInternalClientError as exc:
+            return exc.to_mcp_response()
+            
+        return approval_required(
+            "microsoft_graph",
+            action_type="calendar.schedule_meeting",
+            title=result.get("preview", {}).get("title", "Review meeting schedule"),
+            preview=result.get("preview", {}),
+            payload=result.get("payload", {}),
+            approval_id=str(approval.get("approval_id") or approval.get("id") or ""),
         )

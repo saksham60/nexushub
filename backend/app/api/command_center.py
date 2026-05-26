@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
 
-from app.core.errors import NexusHubError
+from app.core.errors import NexusHubError, ConsentRequiredError
 from app.services.approval_service import ApprovalService
 from app.services.mcp_client import call_tool, get_mcp_health
 from app.services.microsoft_connection_service import MicrosoftConnectionService
+from app.services.microsoft_graph_service import MicrosoftGraphService
 
 router = APIRouter(prefix="/api/command-center", tags=["command-center"])
 
@@ -61,6 +63,7 @@ async def feed(
             {"user_id": user_id, "workspace_id": workspace_id, "maxResults": 10},
         ),
         _safe_approvals(user_id=user_id, workspace_id=workspace_id),
+        _safe_teams(user_id=user_id, workspace_id=workspace_id),
     )
 
     for source, payload, error, error_kind in results:
@@ -79,6 +82,8 @@ async def feed(
             items.extend(_document_items(payload))
         elif source == "approvals":
             items.extend(_approval_items(payload))
+        elif source == "teams":
+            items.extend(_team_items(payload))
 
     if health["microsoft"] != "disconnected" and any(
         _is_microsoft_auth_error(error) for error in source_errors.values()
@@ -136,6 +141,19 @@ async def _safe_approvals(
         return "approvals", {}, str(exc), None
 
 
+async def _safe_teams(
+    *, user_id: str, workspace_id: str | None
+) -> tuple[str, dict[str, Any], str | None, str | None]:
+    try:
+        service = MicrosoftGraphService()
+        chats = await service.get_recent_teams_chats(user_id=user_id, workspace_id=workspace_id)
+        return "teams", chats, None, None
+    except ConsentRequiredError as exc:
+        return "teams", {}, exc.message, "auth"
+    except Exception as exc:
+        return "teams", {}, str(exc), None
+
+
 def _feed_response(
     *,
     mailbox_email: str | None,
@@ -151,6 +169,7 @@ def _feed_response(
             "meetingsToday": sum(1 for item in items if item["type"] == "calendar"),
             "approvalsPending": sum(1 for item in items if item["type"] == "approval"),
             "filesToReview": sum(1 for item in items if item["type"] == "document"),
+            "teamsMentions": sum(1 for item in items if item["type"] == "team"),
             "aiSuggestions": _ai_suggestion_count(items),
         },
         "topInsight": _top_insight(items),
@@ -166,7 +185,7 @@ def _ai_suggestion_count(items: list[dict[str, Any]]) -> int:
 
 def _top_insight(items: list[dict[str, Any]]) -> dict[str, str]:
     high_count = sum(1 for item in items if item.get("priority") == "high")
-    time_sensitive = high_count or sum(1 for item in items if item["type"] in {"email", "approval"})
+    time_sensitive = high_count or sum(1 for item in items if item["type"] in {"email", "approval", "team"})
     if time_sensitive:
         return {
             "title": f"{time_sensitive} time-sensitive item{'s' if time_sensitive != 1 else ''} require attention today.",
@@ -183,13 +202,104 @@ def _insight_description(items: list[dict[str, Any]]) -> str:
     email_count = sum(1 for item in items if item["type"] == "email")
     approval_count = sum(1 for item in items if item["type"] == "approval")
     document_count = sum(1 for item in items if item["type"] == "document")
+    team_count = sum(1 for item in items if item["type"] == "team")
     if email_count:
         parts.append(f"{email_count} email{'s' if email_count != 1 else ''} may need a reply")
     if approval_count:
         parts.append(f"{approval_count} approval{'s' if approval_count != 1 else ''} are pending")
     if document_count:
         parts.append(f"{document_count} file{'s' if document_count != 1 else ''} are ready for review")
+    if team_count:
+        parts.append(f"{team_count} Teams message{'s' if team_count != 1 else ''} require attention")
     return "; ".join(parts) + "." if parts else "No urgent Microsoft 365 activity was found."
+
+
+def _team_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    chats = payload.get("value")
+    if not isinstance(chats, list):
+        return []
+        
+    items: list[dict[str, Any]] = []
+    for chat in chats:
+        if not isinstance(chat, dict):
+            continue
+            
+        last_msg = chat.get("lastMessagePreview")
+        if not isinstance(last_msg, dict):
+            continue
+            
+        body_content = last_msg.get("body", {}).get("content") or last_msg.get("bodyPreview") or ""
+        body_preview = re.sub(r'<[^>]+>', '', str(body_content)).strip()
+        if not body_preview:
+            continue
+            
+        normalized = body_preview.lower()
+        is_urgent_keyword = any(kw in normalized for kw in ["urgent", "asap", "blocker", "approval", "review", "deadline"])
+        is_mention = "@" in normalized
+        chat_type = str(chat.get("chatType") or "")
+        is_direct = chat_type.lower() in ["onetoone"]
+        
+        created_dt_str = last_msg.get("createdDateTime")
+        read_dt_str = chat.get("viewpoint", {}).get("lastMessageReadDateTime")
+        is_unread = True
+        if created_dt_str and read_dt_str:
+            try:
+                is_unread = created_dt_str > read_dt_str
+            except Exception:
+                pass
+
+        score = 0
+        if is_mention: score += 3
+        if is_direct: score += 2
+        if is_urgent_keyword: score += 2
+        if is_unread: score += 1
+
+        if score < 2:
+            continue
+            
+        priority = "low"
+        if score >= 5: priority = "high"
+        elif score >= 3: priority = "medium"
+            
+        chat_id = str(chat.get("id") or "")
+        msg_id = str(last_msg.get("id") or "")
+        topic = str(chat.get("topic") or "Teams Chat")
+        
+        sender_obj = last_msg.get("from")
+        sender_name = "Someone"
+        if isinstance(sender_obj, dict):
+            user_obj = sender_obj.get("user")
+            if isinstance(user_obj, dict):
+                sender_name = str(user_obj.get("displayName") or sender_name)
+                
+        if len(body_preview) > 150:
+            body_preview = body_preview[:147] + "..."
+                
+        items.append({
+            "id": f"team_{msg_id or chat_id}",
+            "type": "team",
+            "title": topic,
+            "description": body_preview,
+            "source": "Microsoft Teams",
+            "person": sender_name,
+            "timeLabel": _date_label(created_dt_str),
+            "priority": priority,
+            "status": "new",
+            "primaryActionLabel": "Review",
+            "metadata": {
+                "chatId": chat_id,
+                "messageId": msg_id,
+                "from": sender_name,
+                "createdDateTime": created_dt_str,
+                "bodyPreview": body_preview,
+                "webUrl": chat.get("webUrl"),
+                "isMention": is_mention,
+                "isUrgent": is_urgent_keyword,
+                "isUnread": is_unread,
+                "score": score
+            }
+        })
+    return items
 
 
 def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str, Any]]:

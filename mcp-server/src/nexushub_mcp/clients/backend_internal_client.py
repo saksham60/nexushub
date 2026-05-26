@@ -126,6 +126,54 @@ class BackendInternalClient:
             },
         )
 
+    async def prepare_calendar_schedule(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        subject: str,
+        start_time: str,
+        end_time: str | None,
+        attendees: list[str],
+        timezone: str,
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/internal/graph/calendar/orchestrate/schedule",
+            {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "subject": subject,
+                "start_time": start_time,
+                "end_time": end_time,
+                "attendees": attendees,
+                "timezone": timezone,
+            },
+        )
+
+    async def prepare_calendar_reschedule(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        event_id: str | None,
+        meeting_title: str | None,
+        target_start_time: str,
+        target_end_time: str | None,
+        timezone: str,
+    ) -> dict[str, Any]:
+        return await self._post(
+            "/internal/graph/calendar/orchestrate/reschedule",
+            {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "event_id": event_id,
+                "meeting_title": meeting_title,
+                "target_start_time": target_start_time,
+                "target_end_time": target_end_time,
+                "timezone": timezone,
+            },
+        )
+
     async def execute_approval(
         self, *, user_id: str, approval_id: str, approved: bool
     ) -> dict[str, Any]:

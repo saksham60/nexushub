@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from langsmith import traceable
+
 from app.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.services.agent_capabilities import is_capability_question
@@ -21,6 +23,7 @@ REQUIRED_ARGUMENTS: dict[str, set[str]] = {
     "docs_build_report": {"fileName"},
     "teams_extract_action_items": {"text"},
     "approval_execute": {"approvalId", "approved"},
+    "calendar_schedule_meeting": {"subject", "startTime"},
 }
 
 
@@ -49,6 +52,7 @@ class SemanticAgentRouter:
         self._llm = llm or OpenAILLMService()
         self._catalog_service = catalog_service or ToolCatalogService()
 
+    @traceable(run_type="chain")
     async def route(
         self,
         *,
@@ -221,6 +225,7 @@ Rules:
 - Prefer read-only tools unless the user clearly asks to prepare a write action.
 - Tools marked requiresApproval are approval-gated; route them only when the request is explicit.
 - For calendar_reschedule_event, extract sourceTime, targetStartTime, targetEndTime, date, timezone, and meetingTitle when present. Convert obvious times to 24-hour HH:MM when possible.
+- For calendar_schedule_meeting, extract subject, startTime, endTime, attendees, and timezone when present. Use email addresses for attendees when the user provides them.
 - If required details are missing, set requiresClarification true.
 - If no tool fits, set toolName null and requiresClarification true.
 - If the user asks a general capability question, choose no tool and request a direct capability response.

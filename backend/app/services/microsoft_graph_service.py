@@ -104,6 +104,59 @@ class MicrosoftGraphService:
             },
         )
 
+    async def get_recent_teams_chats(
+        self, user_id: str, workspace_id: str | None = None, top: int = 20
+    ) -> dict[str, Any]:
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.get(
+                    "/me/chats",
+                    params={
+                        "$expand": "lastMessagePreview",
+                        "$orderby": "lastMessagePreview/createdDateTime desc",
+                        "$top": min(max(top, 1), 50),
+                    },
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph request failed.") from exc
+            
+        if response.status_code >= 400:
+            await self._raise_for_teams_error(response)
+            
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {"value": payload}
+
+    async def get_recent_chat_messages(
+        self, chat_id: str, user_id: str, workspace_id: str | None = None, top: int = 10
+    ) -> dict[str, Any]:
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.get(
+                    f"/me/chats/{_graph_path_segment(chat_id)}/messages",
+                    params={
+                        "$top": min(max(top, 1), 50),
+                        "$orderby": "createdDateTime desc",
+                    },
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph request failed.") from exc
+            
+        if response.status_code >= 400:
+            await self._raise_for_teams_error(response)
+            
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {"value": payload}
+
     async def create_draft_reply(
         self,
         *,
@@ -260,6 +313,167 @@ class MicrosoftGraphService:
         updated = response.json()
         return updated if isinstance(updated, dict) else {"value": updated}
 
+    async def create_event(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        subject: str,
+        start: datetime,
+        end: datetime,
+        timezone: str,
+        attendees: list[str],
+        is_online_meeting: bool = True,
+    ) -> dict[str, Any]:
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Prefer": f'outlook.timezone="{timezone}"',
+        }
+        payload: dict[str, Any] = {
+            "subject": subject,
+            "start": {"dateTime": _graph_datetime(start), "timeZone": timezone},
+            "end": {"dateTime": _graph_datetime(end), "timeZone": timezone},
+            "attendees": [
+                {"emailAddress": {"address": att}, "type": "required"} for att in attendees
+            ],
+            "isOnlineMeeting": is_online_meeting,
+            "onlineMeetingProvider": "teamsForBusiness" if is_online_meeting else "unknown",
+        }
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.post(
+                    "/me/events",
+                    json=payload,
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph event creation failed.") from exc
+        await self._raise_for_calendar_write_error(response)
+        created = response.json()
+        return created if isinstance(created, dict) else {"value": created}
+
+    async def resolve_attendee(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        name: str,
+    ) -> list[dict[str, Any]]:
+        # Searches /me/people to find matching contacts
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.get(
+                    f"/me/people?$search={quote(name)}",
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph people search failed.") from exc
+        if response.status_code >= 400:
+            if response.status_code in {401, 403}:
+                raise ConsentRequiredError("People.Read permission is missing.")
+            raise GraphServiceError("Microsoft Graph returned an error during attendee resolution.")
+        
+        payload = response.json()
+        return payload.get("value", [])
+
+    async def check_conflicts(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        start: datetime,
+        end: datetime,
+        timezone: str,
+    ) -> list[dict[str, Any]]:
+        # Searches /me/calendarView to find conflicting events
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Prefer": f'outlook.timezone="{timezone}"',
+        }
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.get(
+                    "/me/calendarView",
+                    params={
+                        "startDateTime": start.isoformat(),
+                        "endDateTime": end.isoformat(),
+                        "$select": "id,subject,start,end",
+                    },
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph calendar view failed.") from exc
+        
+        if response.status_code >= 400:
+            await self._raise_for_calendar_write_error(response)
+        
+        payload = response.json()
+        return payload.get("value", [])
+
+    async def find_events(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        subject: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        timezone: str = "UTC",
+    ) -> list[dict[str, Any]]:
+        # Searches /me/calendarView for events matching the subject
+        token = await get_valid_microsoft_access_token(user_id, workspace_id)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Prefer": f'outlook.timezone="{timezone}"',
+        }
+        
+        start = start_date or datetime.now(UTC)
+        end = end_date or (start + timedelta(days=14))
+        
+        try:
+            async with httpx.AsyncClient(
+                base_url=GRAPH_BASE_URL, timeout=20.0
+            ) as client:
+                response = await client.get(
+                    "/me/calendarView",
+                    params={
+                        "startDateTime": start.isoformat(),
+                        "endDateTime": end.isoformat(),
+                        "$select": "id,subject,start,end,type,seriesMasterId",
+                        "$top": 50,
+                    },
+                    headers=headers,
+                )
+        except httpx.HTTPError as exc:
+            raise GraphServiceError("Microsoft Graph calendar view failed.") from exc
+            
+        if response.status_code >= 400:
+            await self._raise_for_calendar_write_error(response)
+            
+        payload = response.json()
+        events = payload.get("value", [])
+        
+        # Client side filter for subject
+        search_term = subject.lower()
+        return [
+            evt for evt in events 
+            if evt.get("subject") and search_term in str(evt["subject"]).lower()
+        ]
+
     async def _get(
         self,
         user_id: str,
@@ -317,6 +531,30 @@ class MicrosoftGraphService:
             raise ConsentRequiredError(
                 "Calendars.ReadWrite permission is missing or expired. Reconnect Microsoft 365 and consent to Calendars.ReadWrite."
             )
+        raise GraphServiceError(message)
+
+    async def _raise_for_teams_error(self, response: httpx.Response) -> None:
+        if response.status_code < 400:
+            return
+            
+        # Personal accounts often return 400 Bad Request or 404 for /me/chats
+        payload = {}
+        try:
+            payload = response.json()
+        except Exception:
+            pass
+            
+        error_code = str(payload.get("error", {}).get("code", "")).lower()
+        if response.status_code in {400, 404} or "unsupported" in error_code or "unknown" in error_code or "notfound" in error_code:
+            raise ConsentRequiredError(
+                "Teams chat integration requires a Microsoft 365 work or school account."
+            )
+        if response.status_code in {401, 403}:
+            raise ConsentRequiredError(
+                "Reconnect Microsoft 365 to enable Teams chat insights."
+            )
+            
+        message = _graph_error_message(response, "Microsoft Graph Teams request failed.")
         raise GraphServiceError(message)
 
 

@@ -85,6 +85,8 @@ class CalendarRescheduleService:
                 "originalEnd": original_end.isoformat(),
                 "newStart": target_start.isoformat(),
                 "newEnd": target_end.isoformat(),
+                "targetStartTime": target_start.isoformat(),
+                "targetEndTime": target_end.isoformat(),
                 "timezone": timezone.key,
                 "reason": _string_arg(arguments, "reason") or message,
             },
@@ -94,6 +96,8 @@ class CalendarRescheduleService:
                 "subject": subject,
                 "from": _display_range(original_start, original_end),
                 "to": _display_range(target_start, target_end),
+                "targetStartTime": target_start.isoformat(),
+                "targetEndTime": target_end.isoformat(),
                 "eventId": event_id,
             },
         )

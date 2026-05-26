@@ -8,8 +8,8 @@ from app.core.errors import (
     ConfigurationError,
     ConsentRequiredError,
     ForbiddenError,
-    NotFoundError,
     GraphServiceError,
+    NotFoundError,
 )
 from app.db.supabase_client import get_supabase
 from app.services.microsoft_connection_service import MicrosoftConnectionService
@@ -88,6 +88,12 @@ class ApprovalService:
                 approval=approval,
                 simulate=simulate,
             )
+        if approved and approval.get("action_type") == "calendar.schedule_meeting":
+            return await self._execute_calendar_schedule_approval(
+                user_id=user_id,
+                approval=approval,
+                simulate=simulate,
+            )
         now = datetime.now(UTC).isoformat()
         status = "approved" if approved else "rejected"
         update = {
@@ -157,8 +163,8 @@ class ApprovalService:
             raise ConfigurationError(
                 "At least one recipient is required to create an Outlook draft."
             )
-
         _validate_sendable_recipients(normalized_recipients)
+
         draft_result = await self._create_outlook_draft(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -296,8 +302,8 @@ class ApprovalService:
             raise ConfigurationError(
                 "At least one recipient is required to create an Outlook draft."
             )
-
         _validate_sendable_recipients(recipients)
+
         draft_result = await self._create_outlook_draft(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -353,9 +359,15 @@ class ApprovalService:
         workspace_id = payload.get("workspace_id") or approval.get("workspace_id")
         event_id = str(payload.get("eventId") or "")
         subject = str(payload.get("subject") or "Meeting")
-        timezone = str(payload.get("timezone") or "UTC")
-        new_start = _parse_datetime(payload.get("newStart"), "New meeting start is required.")
-        new_end = _parse_datetime(payload.get("newEnd"), "New meeting end is required.")
+        timezone = str(payload.get("timeZone") or payload.get("timezone") or "UTC")
+        new_start = _parse_datetime(
+            payload.get("targetStartTime") or payload.get("newStart"),
+            "New meeting start is required.",
+        )
+        new_end = _parse_datetime(
+            payload.get("targetEndTime") or payload.get("newEnd"),
+            "New meeting end is required.",
+        )
         if not event_id:
             raise ConfigurationError("Calendar event id is required.")
 
@@ -430,6 +442,104 @@ class ApprovalService:
             metadata={
                 "approval_id": approval["id"],
                 "eventId": event_id,
+                "mailboxEmail": mailbox_email,
+                "simulated": simulate,
+            },
+        )
+        return {
+            **updated,
+            "executed": True,
+            "simulated": simulate,
+            "calendarEvent": calendar_result,
+        }
+
+    async def _execute_calendar_schedule_approval(
+        self,
+        *,
+        user_id: str,
+        approval: dict[str, Any],
+        simulate: bool,
+    ) -> dict[str, Any]:
+        payload = dict(approval.get("payload") or {})
+        workspace_id = payload.get("workspace_id") or approval.get("workspace_id")
+        subject = str(payload.get("subject") or "Meeting")
+        timezone = str(payload.get("timeZone") or "UTC")
+        start = _parse_datetime(payload.get("targetStartTime"), "Meeting start is required.")
+        end = _parse_datetime(payload.get("targetEndTime"), "Meeting end is required.")
+        attendees = payload.get("attendees") or []
+
+        connection = MicrosoftConnectionService().get_connected_account(
+            user_id=user_id, workspace_id=workspace_id
+        )
+        if not connection:
+            raise AuthenticationRequiredError("Microsoft 365 is not connected.")
+        mailbox_email = str(connection.get("provider_email") or "")
+
+        if simulate:
+            calendar_result = {
+                "success": True,
+                "eventId": f"demo_event_{approval_safe_timestamp(datetime.now(UTC).isoformat())}",
+                "subject": subject,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "timezone": timezone,
+                "mailboxEmail": mailbox_email,
+                "webLink": None,
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "simulated": True,
+            }
+        else:
+            if not MicrosoftConnectionService().has_scope(
+                user_id=user_id, workspace_id=workspace_id, scope="Calendars.ReadWrite"
+            ):
+                raise ConsentRequiredError(
+                    "Calendars.ReadWrite permission is missing. Reconnect Microsoft 365 and consent to Calendars.ReadWrite."
+                )
+            created_event = await MicrosoftGraphService().create_event(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                subject=subject,
+                start=start,
+                end=end,
+                timezone=timezone,
+                attendees=attendees,
+            )
+            calendar_result = {
+                "success": True,
+                "eventId": created_event.get("id"),
+                "subject": created_event.get("subject") or subject,
+                "start": created_event.get("start", {}).get("dateTime") or start.isoformat(),
+                "end": created_event.get("end", {}).get("dateTime") or end.isoformat(),
+                "timezone": timezone,
+                "mailboxEmail": mailbox_email,
+                "webLink": created_event.get("webLink"),
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "simulated": False,
+            }
+
+        now = datetime.now(UTC).isoformat()
+        response = (
+            get_supabase()
+            .table("approval_actions")
+            .update(
+                {
+                    "status": "approved",
+                    "approved_at": now,
+                    "executed_at": now,
+                }
+            )
+            .eq("id", approval["id"])
+            .eq("user_id", user_id)
+            .execute()
+        )
+        updated = dict(response.data[0])
+        self._audit(
+            user_id=user_id,
+            workspace_id=updated.get("workspace_id"),
+            event_type="calendar.scheduled",
+            metadata={
+                "approval_id": approval["id"],
+                "eventId": calendar_result.get("eventId"),
                 "mailboxEmail": mailbox_email,
                 "simulated": simulate,
             },

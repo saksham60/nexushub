@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from langsmith import traceable
 
 from app.config import Settings, get_settings
 from app.core.errors import GraphServiceError
@@ -26,6 +27,7 @@ class McpClient:
         payload = response.json()
         return payload if isinstance(payload, dict) else {"status": "unknown"}
 
+    @traceable(run_type="tool")
     async def call_tool(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> dict[str, Any]:
