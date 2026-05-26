@@ -47,6 +47,8 @@ export type DraftCreateResponse = {
   mailboxEmail: string;
   createdAt: string;
   webLink?: string | null;
+  createdVia?: "reply_draft" | "standalone_draft" | string | null;
+  replyFallbackReason?: string | null;
   simulated?: boolean;
   approvalId?: string | null;
 };
@@ -60,6 +62,10 @@ export type DraftSendResponse = {
   outlookDraftId: string;
   mailboxEmail: string;
   sentAt: string;
+  recipients?: string[];
+  subject?: string;
+  deliveryStatus?: "accepted_by_outlook" | string;
+  deliveryNote?: string;
   simulated?: boolean;
 };
 

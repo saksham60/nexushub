@@ -164,6 +164,8 @@ async def create_draft(payload: MailDraftCreateRequest) -> dict[str, Any]:
         "mailboxEmail": draft.get("mailboxEmail"),
         "createdAt": draft.get("createdAt"),
         "webLink": draft.get("webLink"),
+        "createdVia": draft.get("createdVia"),
+        "replyFallbackReason": draft.get("replyFallbackReason"),
         "simulated": bool(draft.get("simulated")),
         "approvalId": payload.approval_id,
     }

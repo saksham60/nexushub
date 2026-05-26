@@ -9,6 +9,7 @@ from app.core.errors import (
     ConsentRequiredError,
     ForbiddenError,
     NotFoundError,
+    GraphServiceError,
 )
 from app.db.supabase_client import get_supabase
 from app.services.microsoft_connection_service import MicrosoftConnectionService
@@ -157,6 +158,7 @@ class ApprovalService:
                 "At least one recipient is required to create an Outlook draft."
             )
 
+        _validate_sendable_recipients(normalized_recipients)
         draft_result = await self._create_outlook_draft(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -221,11 +223,27 @@ class ApprovalService:
                 "Mail.Send permission is missing. Reconnect Microsoft 365 and consent to Mail.Send."
             )
 
-        await MicrosoftGraphService().send_draft(
+        graph_service = MicrosoftGraphService()
+        draft_snapshot: dict[str, Any] = {}
+        if MicrosoftConnectionService().has_scope(
+            user_id=user_id, workspace_id=workspace_id, scope="Mail.ReadWrite"
+        ):
+            try:
+                draft_snapshot = await graph_service.get_message(
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    message_id=outlook_draft_id,
+                )
+            except GraphServiceError:
+                draft_snapshot = {}
+
+        await graph_service.send_draft(
             user_id=user_id,
             workspace_id=workspace_id,
             draft_id=outlook_draft_id,
         )
+        sent_recipients = _message_recipients(draft_snapshot)
+        sent_subject = str(draft_snapshot.get("subject") or "")
         self._audit(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -233,6 +251,9 @@ class ApprovalService:
             metadata={
                 "outlookDraftId": outlook_draft_id,
                 "mailboxEmail": mailbox_email,
+                "recipients": sent_recipients,
+                "subject": sent_subject,
+                "deliveryStatus": "accepted_by_outlook",
                 "simulated": False,
             },
         )
@@ -241,6 +262,10 @@ class ApprovalService:
             "outlookDraftId": outlook_draft_id,
             "mailboxEmail": mailbox_email,
             "sentAt": sent_at,
+            "recipients": sent_recipients,
+            "subject": sent_subject,
+            "deliveryStatus": "accepted_by_outlook",
+            "deliveryNote": "Microsoft Graph accepted the message for sending. Recipient inbox delivery can still be delayed, bounced, quarantined, or blocked by the recipient mailbox.",
             "simulated": False,
         }
 
@@ -272,6 +297,7 @@ class ApprovalService:
                 "At least one recipient is required to create an Outlook draft."
             )
 
+        _validate_sendable_recipients(recipients)
         draft_result = await self._create_outlook_draft(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -466,6 +492,8 @@ class ApprovalService:
             "mailboxEmail": mailbox_email,
             "createdAt": created_at,
             "webLink": draft.get("webLink"),
+            "createdVia": draft.get("createdVia"),
+            "replyFallbackReason": draft.get("replyFallbackReason"),
             "simulated": False,
         }
 
@@ -510,6 +538,40 @@ def _normalize_recipients(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
     return []
+
+
+def _validate_sendable_recipients(recipients: list[str]) -> None:
+    automated = [recipient for recipient in recipients if _is_automated_email(recipient)]
+    if automated:
+        raise ConfigurationError(
+            "NexusHub will not send to automated or no-reply addresses: "
+            f"{', '.join(automated)}. Open the original email or choose a human recipient."
+        )
+
+
+def _is_automated_email(address: str) -> bool:
+    if "@" not in address:
+        return False
+    local_part = address.split("@", 1)[0].lower()
+    compact_local = "".join(char for char in local_part if char.isalnum())
+    return any(
+        marker in compact_local
+        for marker in ("noreply", "donotreply", "mailerdaemon")
+    )
+
+
+def _message_recipients(message: dict[str, Any]) -> list[str]:
+    recipients = message.get("toRecipients")
+    if not isinstance(recipients, list):
+        return []
+    values: list[str] = []
+    for recipient in recipients:
+        if not isinstance(recipient, dict):
+            continue
+        email = recipient.get("emailAddress")
+        if isinstance(email, dict) and email.get("address"):
+            values.append(str(email["address"]))
+    return values
 
 
 def approval_safe_timestamp(value: str) -> str:

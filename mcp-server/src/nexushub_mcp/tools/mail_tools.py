@@ -24,6 +24,7 @@ REPLY_TERMS = (
 )
 
 logger = get_logger(__name__)
+AUTOMATED_ADDRESS_MARKERS = ("noreply", "donotreply", "mailerdaemon")
 
 
 def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
@@ -382,6 +383,9 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
 
 
 def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
+    sender_email = _sender_email(message)
+    if _is_automated_email(sender_email):
+        return None
     text = f"{message.get('subject', '')} {message.get('bodyPreview', '')}".lower()
     score = 0
     reasons: list[str] = []
@@ -405,7 +409,7 @@ def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
         "messageId": message.get("id"),
         "threadId": message.get("conversationId"),
         "sender": _sender_name(message),
-        "senderEmail": _sender_email(message),
+        "senderEmail": sender_email,
         "subject": message.get("subject"),
         "preview": message.get("bodyPreview"),
         "body": _body_content(message),
@@ -428,6 +432,14 @@ def _sender_email(message: dict[str, Any]) -> str | None:
     email = from_block.get("emailAddress") or {}
     address = email.get("address")
     return str(address) if address else None
+
+
+def _is_automated_email(address: str | None) -> bool:
+    if not address or "@" not in address:
+        return False
+    local_part = address.split("@", 1)[0].lower()
+    compact_local = "".join(char for char in local_part if char.isalnum())
+    return any(marker in compact_local for marker in AUTOMATED_ADDRESS_MARKERS)
 
 
 def _recipient_emails(message: dict[str, Any]) -> list[str]:

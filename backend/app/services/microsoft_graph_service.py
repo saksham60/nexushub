@@ -39,6 +39,22 @@ class MicrosoftGraphService:
             },
         )
 
+    async def get_message(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        message_id: str,
+    ) -> dict[str, Any]:
+        return await self._get(
+            user_id,
+            workspace_id,
+            f"/me/messages/{_graph_path_segment(message_id)}",
+            params={
+                "$select": "id,subject,toRecipients,ccRecipients,bccRecipients,createdDateTime,internetMessageId",
+            },
+        )
+
     async def get_today_calendar(
         self, user_id: str, workspace_id: str | None = None
     ) -> dict[str, Any]:

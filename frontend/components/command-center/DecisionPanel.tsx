@@ -61,6 +61,14 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     const email = metadata.from;
     return email && String(email).includes("@") ? [String(email)] : [];
   }, [item, metadata.from]);
+  const automatedRecipients = useMemo(
+    () => emailRecipients.filter((recipient) => isAutomatedEmail(recipient)),
+    [emailRecipients],
+  );
+  const recipientWarning =
+    automatedRecipients.length > 0
+      ? `This sender uses a no-reply or automated address: ${automatedRecipients.join(", ")}. NexusHub will not send to it.`
+      : null;
 
   if (!item) {
     return (
@@ -224,6 +232,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
     approveAction.isPending ||
     Boolean(sentDraft) ||
     Boolean(updatedCalendar) ||
+    Boolean(item.type === "email" && draft && recipientWarning) ||
     Boolean(item.type === "email" && createdDraft && !createdDraft.outlookDraftId);
 
   return (
@@ -255,9 +264,17 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           </div>
         )}
 
+        {recipientWarning && (
+          <div className="mb-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{recipientWarning}</span>
+          </div>
+        )}
+
         {sentDraft ? (
           <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            Email sent from Outlook for {sentDraft.mailboxEmail}.
+            Outlook accepted this email for sending
+            {sentDraft.recipients?.length ? ` to ${sentDraft.recipients.join(", ")}` : ""}.
           </div>
         ) : updatedCalendar ? (
           <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
@@ -428,4 +445,13 @@ function approvalPrimaryLabel(actionType: unknown): string {
   if (actionType === "calendar.reschedule_event") return "Approve Reschedule";
   if (actionType === "mail.create_draft_reply") return "Create Outlook Draft";
   return "Approve Action";
+}
+
+function isAutomatedEmail(address: string): boolean {
+  if (!address.includes("@")) return false;
+  const localPart = address.split("@", 1)[0].toLowerCase();
+  const compactLocal = localPart.replace(/[^a-z0-9]/g, "");
+  return ["noreply", "donotreply", "mailerdaemon"].some((marker) =>
+    compactLocal.includes(marker),
+  );
 }

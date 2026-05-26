@@ -79,10 +79,10 @@ export function useSendOutlookDraft(options: MailMutationOptions = {}) {
         ...getRequestIdentity(),
         ...payload,
         simulate: process.env.NEXT_PUBLIC_DEMO_MODE === "true",
-      }),
+    }),
     onSuccess: (data) => {
       if (toastOnSuccess) {
-        toast.success(`Email sent from Outlook for ${data.mailboxEmail}`);
+        toast.success(`Outlook accepted the email for sending from ${data.mailboxEmail}`);
       }
     },
     onError: (error) => {
