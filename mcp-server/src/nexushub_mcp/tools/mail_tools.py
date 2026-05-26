@@ -384,7 +384,9 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
 
 def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
     sender_email = _sender_email(message)
-    if _is_automated_email(sender_email):
+    reply_to = _reply_to_emails(message)
+    reply_recipient = reply_to[0] if reply_to else sender_email
+    if not reply_recipient or _is_automated_email(reply_recipient):
         return None
     text = f"{message.get('subject', '')} {message.get('bodyPreview', '')}".lower()
     score = 0
@@ -409,7 +411,9 @@ def _classify_reply_need(message: dict[str, Any]) -> dict[str, Any] | None:
         "messageId": message.get("id"),
         "threadId": message.get("conversationId"),
         "sender": _sender_name(message),
-        "senderEmail": sender_email,
+        "senderEmail": reply_recipient,
+        "senderAddress": sender_email,
+        "replyTo": reply_to,
         "subject": message.get("subject"),
         "preview": message.get("bodyPreview"),
         "body": _body_content(message),
@@ -438,8 +442,31 @@ def _is_automated_email(address: str | None) -> bool:
     if not address or "@" not in address:
         return False
     local_part = address.split("@", 1)[0].lower()
+    domain = address.split("@", 1)[1].lower()
     compact_local = "".join(char for char in local_part if char.isalnum())
-    return any(marker in compact_local for marker in AUTOMATED_ADDRESS_MARKERS)
+    suffix = local_part.removeprefix("outlook_")
+    return any(marker in compact_local for marker in AUTOMATED_ADDRESS_MARKERS) or (
+        domain == "outlook.com"
+        and local_part.startswith("outlook_")
+        and len(suffix) >= 8
+        and all(char in "0123456789abcdef" for char in suffix)
+    )
+
+
+def _reply_to_emails(message: dict[str, Any]) -> list[str]:
+    reply_to = message.get("replyTo")
+    if not isinstance(reply_to, list):
+        return []
+    values: list[str] = []
+    for recipient in reply_to:
+        if not isinstance(recipient, dict):
+            continue
+        email = recipient.get("emailAddress")
+        if isinstance(email, dict) and email.get("address"):
+            address = str(email["address"])
+            if not _is_automated_email(address):
+                values.append(address)
+    return values
 
 
 def _recipient_emails(message: dict[str, Any]) -> list[str]:

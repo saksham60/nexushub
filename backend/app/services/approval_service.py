@@ -654,7 +654,7 @@ def _validate_sendable_recipients(recipients: list[str]) -> None:
     automated = [recipient for recipient in recipients if _is_automated_email(recipient)]
     if automated:
         raise ConfigurationError(
-            "NexusHub will not send to automated or no-reply addresses: "
+            "NexusHub will not send to automated, no-reply, or generated Outlook alias addresses: "
             f"{', '.join(automated)}. Open the original email or choose a human recipient."
         )
 
@@ -663,10 +663,17 @@ def _is_automated_email(address: str) -> bool:
     if "@" not in address:
         return False
     local_part = address.split("@", 1)[0].lower()
+    domain = address.split("@", 1)[1].lower()
     compact_local = "".join(char for char in local_part if char.isalnum())
-    return any(
-        marker in compact_local
-        for marker in ("noreply", "donotreply", "mailerdaemon")
+    suffix = local_part.removeprefix("outlook_")
+    generated_outlook_alias = (
+        domain == "outlook.com"
+        and local_part.startswith("outlook_")
+        and len(suffix) >= 8
+        and all(char in "0123456789abcdef" for char in suffix)
+    )
+    return generated_outlook_alias or any(
+        marker in compact_local for marker in ("noreply", "donotreply", "mailerdaemon")
     )
 
 

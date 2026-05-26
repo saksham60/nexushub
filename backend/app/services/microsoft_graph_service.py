@@ -35,7 +35,7 @@ class MicrosoftGraphService:
             params={
                 "$top": min(max(top, 1), 50),
                 "$orderby": "receivedDateTime desc",
-                "$select": "id,conversationId,from,toRecipients,subject,bodyPreview,body,webLink,receivedDateTime,isRead,importance",
+                "$select": "id,conversationId,from,replyTo,toRecipients,subject,bodyPreview,body,webLink,receivedDateTime,isRead,importance",
             },
         )
 

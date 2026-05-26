@@ -119,6 +119,25 @@ class MailDraftSendTests(unittest.IsolatedAsyncioTestCase):
 
             graph_cls.assert_not_called()
 
+    async def test_generated_outlook_alias_recipient_is_not_sendable(self) -> None:
+        service = ApprovalService()
+
+        with (
+            patch("app.services.approval_service.MicrosoftConnectionService"),
+            patch("app.services.approval_service.MicrosoftGraphService") as graph_cls,
+        ):
+            with self.assertRaises(ConfigurationError):
+                await service.create_mail_draft_direct(
+                    user_id="user-1",
+                    workspace_id=None,
+                    draft_body="Thanks for the update.",
+                    subject="Re: Really important",
+                    recipients=["outlook_4591F474B3785E27@outlook.com"],
+                    original_message_id="message-1",
+                )
+
+            graph_cls.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -316,6 +316,7 @@ def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str
                 continue
             subject = str(item.get("subject") or "(No subject)")
             sender_email = str(item.get("senderEmail") or item.get("sender") or "")
+            reply_to = item.get("replyTo") if isinstance(item.get("replyTo"), list) else []
             received_at = item.get("receivedAt")
             action_items.append(
                 {
@@ -334,6 +335,8 @@ def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str
                         "conversationId": item.get("threadId"),
                         "subject": subject,
                         "from": sender_email,
+                        "senderAddress": item.get("senderAddress") or sender_email,
+                        "replyTo": reply_to,
                         "to": item.get("to") or [],
                         "receivedDateTime": received_at,
                         "bodyPreview": item.get("preview") or "",

@@ -58,9 +58,10 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   const metadata = (item?.metadata || {}) as Record<string, any>;
   const emailRecipients = useMemo(() => {
     if (!item || item.type !== "email") return [];
-    const email = metadata.from;
+    const replyTo = Array.isArray(metadata.replyTo) ? metadata.replyTo.map(String).filter(Boolean) : [];
+    const email = replyTo[0] || metadata.from;
     return email && String(email).includes("@") ? [String(email)] : [];
-  }, [item, metadata.from]);
+  }, [item, metadata.from, metadata.replyTo]);
   const automatedRecipients = useMemo(
     () => emailRecipients.filter((recipient) => isAutomatedEmail(recipient)),
     [emailRecipients],
@@ -500,9 +501,17 @@ function approvalPrimaryLabel(actionType: unknown): string {
 
 function isAutomatedEmail(address: string): boolean {
   if (!address.includes("@")) return false;
-  const localPart = address.split("@", 1)[0].toLowerCase();
+  const [rawLocalPart, rawDomain] = address.split("@", 2);
+  const localPart = rawLocalPart.toLowerCase();
+  const domain = rawDomain.toLowerCase();
   const compactLocal = localPart.replace(/[^a-z0-9]/g, "");
-  return ["noreply", "donotreply", "mailerdaemon"].some((marker) =>
+  const suffix = localPart.replace(/^outlook_/, "");
+  const generatedOutlookAlias =
+    domain === "outlook.com" &&
+    localPart.startsWith("outlook_") &&
+    suffix.length >= 8 &&
+    /^[0-9a-f]+$/.test(suffix);
+  return generatedOutlookAlias || ["noreply", "donotreply", "mailerdaemon"].some((marker) =>
     compactLocal.includes(marker),
   );
 }
