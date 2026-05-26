@@ -246,9 +246,11 @@ uvicorn nexushub_mcp.asgi:app --host 0.0.0.0 --port $PORT
 Set these environment variables in Render:
 
 ```text
-NEXUSHUB_MODE=mock
+NEXUSHUB_MODE=graph
 MCP_TRANSPORT=streamable-http
 MCP_HTTP_PATH=/mcp
+BACKEND_INTERNAL_URL=<backend-internal-url>
+INTERNAL_SERVICE_TOKEN=<same-shared-secret-as-backend>
 LOG_LEVEL=info
 ```
 

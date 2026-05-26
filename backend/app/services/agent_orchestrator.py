@@ -102,7 +102,7 @@ class AgentOrchestrator:
                     approval_required=False,
                 ),
             }
-        if decision.requires_approval:
+        if decision.requires_approval and tool_name != "approval_execute":
             if tool_name == "calendar_reschedule_event":
                 return await self._prepare_calendar_reschedule(
                     user_id=user_id,
@@ -110,32 +110,11 @@ class AgentOrchestrator:
                     message=message,
                     decision=decision,
                 )
-            if tool_name == "calendar_schedule_meeting":
-                return await self._prepare_mcp_approval(
-                    user_id=user_id,
-                    workspace_id=workspace_id,
-                    decision=decision,
-                )
-            return {
-                "type": "approval_required",
-                "message": "This action requires explicit approval before NexusHub can execute it.",
-                "toolUsed": tool_name,
-                "confidence": decision.confidence,
-                "requiresApproval": True,
-                "approvalId": None,
-                "data": {"arguments": decision.arguments or {}},
-                "agent": {
-                    "mode": "semantic",
-                    "routing_source": "openai_semantic_router",
-                    "reason": decision.reason,
-                },
-                "routing": _routing_debug(
-                    selected_tool=tool_name,
-                    decision=decision,
-                    clarification_needed=False,
-                    approval_required=True,
-                ),
-            }
+            return await self._prepare_mcp_approval(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                decision=decision,
+            )
 
         arguments = {
             "user_id": user_id,
