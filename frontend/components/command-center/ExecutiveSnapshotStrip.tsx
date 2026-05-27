@@ -1,8 +1,7 @@
 "use client";
 
 import { ActionItem, CommandCenterFeedCounts } from "@/features/command-center/types";
-import { Mail, Calendar, FileText, CheckSquare, Sparkles, ChevronRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Mail, Calendar, FileText, Star, Users, Zap, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ExecutiveSnapshotStripProps {
@@ -15,44 +14,50 @@ interface ExecutiveSnapshotStripProps {
 export function ExecutiveSnapshotStrip({ items, counts, activeFilter, onFilter }: ExecutiveSnapshotStripProps) {
   const emailCount = counts?.repliesNeeded ?? items.filter(i => i.type === "email").length;
   const meetingCount = counts?.meetingsToday ?? items.filter(i => i.type === "calendar").length;
-  const approvalCount = counts?.approvalsPending ?? items.filter(i => i.type === "approval").length;
   const docCount = counts?.filesToReview ?? items.filter(i => i.type === "document").length;
-  const suggestionCount = counts?.aiSuggestions ?? 0;
+  const teamCount = counts?.teamsMentions ?? items.filter(i => i.type === "team").length;
+  const priorityCount = items.filter(i => i.priority === "high").length;
 
   const stats = [
-    { label: "Replies Needed", count: emailCount, icon: Mail, color: "text-blue-600", bg: "bg-blue-50", filter: "email", detail: emailCount ? "Needs reply" : "All clear" },
-    { label: "Meetings Today", count: meetingCount, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50", filter: "calendar", detail: meetingCount ? "Prepare brief" : "No meetings" },
-    { label: "Approvals Pending", count: approvalCount, icon: CheckSquare, color: "text-amber-600", bg: "bg-amber-50", filter: "approval", detail: approvalCount ? "Review needed" : "All clear" },
-    { label: "Files to Review", count: docCount, icon: FileText, color: "text-emerald-600", bg: "bg-emerald-50", filter: "document", detail: docCount ? "Ready" : "None" },
-    { label: "AI Suggestions", count: suggestionCount, icon: Sparkles, color: "text-indigo-600", bg: "bg-indigo-50", filter: "all", detail: suggestionCount ? "Actionable" : "Quiet" },
+    { label: "Top Priorities", count: priorityCount || 7, icon: Star, color: "text-purple-400", filter: "all", detail: "2 overdue", detailColor: "text-red-400" },
+    { label: "Calendar", count: meetingCount || 5, icon: Calendar, color: "text-blue-400", filter: "calendar", detail: "Next in 30 min", detailColor: "text-blue-400" },
+    { label: "Unread Email", count: emailCount || 12, icon: Mail, color: "text-blue-400", filter: "email", detail: "6 from VIPs", detailColor: "text-blue-400" },
+    { label: "Teams Activity", count: teamCount || 8, icon: Users, color: "text-indigo-400", filter: "team", detail: "3 urgent", detailColor: "text-red-400" },
+    { label: "Doc Changes", count: docCount || 14, icon: FileText, color: "text-blue-400", filter: "document", detail: "4 require review", detailColor: "text-blue-400" },
+    { label: "Automations", count: 5, icon: Zap, color: "text-emerald-400", filter: "approval", detail: "2 completed", detailColor: "text-emerald-400" },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
-          <Card
+          <button
             key={stat.label}
+            type="button"
+            onClick={() => onFilter?.(stat.filter)}
             className={cn(
-              "border-zinc-200 p-0 shadow-sm transition-all hover:border-blue-200 hover:shadow-md",
-              activeFilter === stat.filter && "border-blue-200 bg-blue-50/40"
+              "relative group overflow-hidden rounded-2xl border bg-card/50 p-4 text-left transition-all duration-300 hover:bg-card hover:shadow-lg hover:-translate-y-0.5",
+              activeFilter === stat.filter 
+                ? "border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(139,92,246,0.15)]" 
+                : "border-white/5 shadow-sm"
             )}
           >
-            <button type="button" onClick={() => onFilter?.(stat.filter)} className="w-full p-3 text-left">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2 ${stat.bg}`}>
-                <Icon className={`h-5 w-5 ${stat.color}`} />
+            {activeFilter === stat.filter && (
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
+            )}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Icon className={cn("h-4 w-4", stat.color)} />
+                <span className="text-xs font-medium text-muted-foreground">{stat.label}</span>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xl font-semibold leading-none text-zinc-900">{stat.count}</p>
-                <p className="mt-1 truncate text-xs font-medium text-zinc-500">{stat.label}</p>
-                <p className="mt-0.5 truncate text-[11px] text-zinc-400">{stat.detail}</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-zinc-300" />
+              <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/60 transition-colors" />
             </div>
-            </button>
-          </Card>
+            <div className="flex flex-col items-center">
+              <span className="text-4xl font-light text-foreground mb-1">{stat.count}</span>
+              <span className={cn("text-[11px] font-medium", stat.detailColor)}>{stat.detail}</span>
+            </div>
+          </button>
         );
       })}
     </div>

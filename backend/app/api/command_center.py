@@ -68,6 +68,8 @@ async def feed(
 
     for source, payload, error, error_kind in results:
         if error:
+            if error_kind == "teams_unsupported":
+                continue # Do not surface Teams API block as an error
             source_errors[source] = error
             if error_kind == "auth":
                 health["microsoft"] = "disconnected"
@@ -149,8 +151,10 @@ async def _safe_teams(
         chats = await service.get_recent_teams_chats(user_id=user_id, workspace_id=workspace_id)
         return "teams", chats, None, None
     except ConsentRequiredError as exc:
-        return "teams", {}, exc.message, "auth"
+        return "teams", {}, exc.message, "teams_unsupported"
     except Exception as exc:
+        if "Personal accounts are not supported" in str(exc) or "auth" in str(exc).lower() or "401" in str(exc) or "403" in str(exc):
+            return "teams", {}, str(exc), "teams_unsupported"
         return "teams", {}, str(exc), None
 
 

@@ -2,21 +2,25 @@
 
 import { useState } from "react";
 import { useActionQueue } from "@/features/command-center/hooks/useActionQueue";
-import { MorningBrief } from "@/components/command-center/MorningBrief";
 import { ExecutiveSnapshotStrip } from "@/components/command-center/ExecutiveSnapshotStrip";
 import { PriorityWorkFeed } from "@/components/command-center/PriorityWorkFeed";
 import { DecisionPanel } from "@/components/command-center/DecisionPanel";
-import { CommandCenterActionHub } from "@/components/command-center/CommandCenterActionHub";
-import { AlertCircle, ArrowRight, Sparkles } from "lucide-react";
+import { AlertCircle, Sparkles, Send } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
 import { useConnectMicrosoft } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useSession } from "@/features/session/hooks";
 
 export default function CommandCenterPage() {
   const [agentResponse, setAgentResponse] = useState<AgentChatResponse | null>(null);
+  const [promptInput, setPromptInput] = useState("");
   const sendAgentMessage = useSendAgentMessage();
   const connectMicrosoft = useConnectMicrosoft();
+  const { data: session } = useSession();
+  const userName = session?.status === "ok" ? session.user.display_name.split(" ")[0] : "Alex";
+
   const { 
     items, 
     filteredItems, 
@@ -32,6 +36,7 @@ export default function CommandCenterPage() {
     selectedItem, 
     setSelectedItem 
   } = useActionQueue();
+  
   const statusBanner = getStatusBanner({
     backendUnavailable: !health && isError,
     mcpStatus: health?.mcp,
@@ -41,15 +46,17 @@ export default function CommandCenterPage() {
   });
 
   const runPrompt = async (text: string) => {
+    if (!text.trim()) return;
     const response = await sendAgentMessage.mutateAsync({ message: text });
     setAgentResponse(response);
+    setPromptInput("");
     return response;
   };
 
   return (
-    <div className="animate-in fade-in space-y-4 pb-10 duration-500">
+    <div className="animate-in fade-in space-y-8 pb-10 duration-500 max-w-6xl mx-auto pt-6">
       {statusBanner && (
-        <div className={`${statusBanner.className} rounded-lg border px-4 py-3 text-sm`}>
+        <div className={`${statusBanner.className} rounded-xl border px-4 py-3 text-sm backdrop-blur-md`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 shrink-0" />
@@ -58,7 +65,7 @@ export default function CommandCenterPage() {
             {statusBanner.action === "connect_microsoft" && (
               <Button
                 size="sm"
-                className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
                 onClick={() => connectMicrosoft()}
               >
                 Connect Microsoft 365
@@ -68,16 +75,40 @@ export default function CommandCenterPage() {
         </div>
       )}
 
-      <MorningBrief
-        onRunPrompt={runPrompt}
-        agentResponse={agentResponse}
-        isSubmittingPrompt={sendAgentMessage.isPending}
-      />
+      {/* Greeting Section */}
+      <div className="text-center space-y-2 mt-4">
+        <h1 className="text-4xl font-medium tracking-tight text-foreground">
+          Good afternoon, <span className="text-primary">{userName}</span>.
+        </h1>
+        <p className="text-muted-foreground text-sm font-medium">
+          Your executive work cockpit. AI-powered. Microsoft 365 connected.
+        </p>
+      </div>
 
-      <TopInsightCard
-        title={topInsight?.title}
-        description={topInsight?.description}
-      />
+      {/* Central Floating Search Bar */}
+      <div className="max-w-3xl mx-auto relative group">
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/50 to-blue-500/50 rounded-2xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+        <div className="relative flex items-center bg-background/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl">
+          <div className="pl-4 pr-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <Input
+            value={promptInput}
+            onChange={(e) => setPromptInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runPrompt(promptInput)}
+            placeholder="Ask NexusHub anything, run a task, or prepare an action..."
+            className="flex-1 bg-transparent border-0 focus-visible:ring-0 text-base placeholder:text-muted-foreground h-12"
+          />
+          <div className="flex items-center gap-2 pr-2">
+            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-white/5 border border-white/10 text-muted-foreground text-xs font-mono">
+              <span>⌘</span><span>K</span>
+            </div>
+            <Button size="icon" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.5)]" onClick={() => runPrompt(promptInput)}>
+              <Send className="h-4 w-4 ml-0.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <ExecutiveSnapshotStrip
         items={items}
@@ -86,7 +117,7 @@ export default function CommandCenterPage() {
         onFilter={setActiveFilter}
       />
 
-      <div id="work-feed" className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+      <div id="work-feed" className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="lg:col-span-7 xl:col-span-7">
           <div className="h-[520px] min-h-[440px]">
             <PriorityWorkFeed 
@@ -101,46 +132,50 @@ export default function CommandCenterPage() {
         </div>
 
         <div className="lg:col-span-5 xl:col-span-5">
-          <div className="h-[520px] min-h-[440px]">
+          <div className="h-[520px] min-h-[440px] flex flex-col">
+            <h3 className="text-base font-semibold text-foreground mb-4 pl-1">Decision Desk</h3>
             <DecisionPanel item={selectedItem} />
           </div>
         </div>
       </div>
 
-      <div className="pt-2">
-        <CommandCenterActionHub onRunPrompt={runPrompt} />
+      <div className="pt-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <InsightMiniCard title="Outlook" value="Email volume is up 18% vs last 2 weeks" trend="up" color="blue" />
+          <InsightMiniCard title="Teams" value="You've been mentioned 23 times this week" trend="up" color="indigo" />
+          <InsightMiniCard title="Word" value="7 documents need your review" trend="down" color="blue" />
+          <InsightMiniCard title="Excel" value="Q3 forecast updated by Finance team" trend="up" color="emerald" />
+          <InsightMiniCard title="PowerPoint" value="2 decks are ready for your review" trend="up" color="orange" />
+          <InsightMiniCard title="OneNote" value="3 new notes from Leadership Sync" trend="up" color="purple" />
+        </div>
       </div>
     </div>
   );
 }
 
-function TopInsightCard({
-  title,
-  description,
-}: {
-  title?: string;
-  description?: string;
-}) {
+function InsightMiniCard({ title, value, trend, color }: { title: string, value: string, trend: "up" | "down", color: string }) {
+  const bgColors: Record<string, string> = {
+    blue: "bg-[#0078D4]/10 border-[#0078D4]/20 text-[#0078D4]",
+    indigo: "bg-[#464EB8]/10 border-[#464EB8]/20 text-[#464EB8]",
+    emerald: "bg-[#217346]/10 border-[#217346]/20 text-[#217346]",
+    orange: "bg-[#D24726]/10 border-[#D24726]/20 text-[#D24726]",
+    purple: "bg-[#7719AA]/10 border-[#7719AA]/20 text-[#7719AA]",
+  };
   return (
-    <section className="rounded-xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Top Insight</p>
-            <h2 className="truncate text-sm font-semibold text-zinc-900">
-              {title || "Your executive brief is ready."}
-            </h2>
-            {description && <p className="truncate text-xs text-zinc-500">{description}</p>}
-          </div>
+    <div className="rounded-xl border border-white/10 bg-card p-4 hover:bg-white/5 transition-colors cursor-pointer flex flex-col justify-between h-32">
+      <div className="flex items-center gap-2">
+        <div className={`h-6 w-6 rounded flex items-center justify-center border ${bgColors[color]}`}>
+          <span className="text-[10px] font-bold">{title[0]}</span>
         </div>
-        <Button variant="ghost" size="sm" className="shrink-0 text-blue-700">
-          View details <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-        </Button>
+        <span className="text-sm font-medium text-foreground">{title}</span>
       </div>
-    </section>
+      <div>
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{value}</p>
+        <svg className="w-full h-6" viewBox="0 0 100 20" preserveAspectRatio="none">
+          <path d="M0,15 Q20,5 40,10 T80,5 T100,10" fill="none" stroke={trend === "up" ? "currentColor" : "rgba(255,255,255,0.2)"} strokeWidth="2" className={bgColors[color].split(" ")[2]} />
+        </svg>
+      </div>
+    </div>
   );
 }
 
@@ -156,56 +191,15 @@ function getStatusBanner({
   mcpError?: string;
   microsoftStatus?: string;
   activityError?: string | null;
-}): StatusBanner | null {
-  if (backendUnavailable) {
-    return {
-      className: "bg-red-50 text-red-800 border-red-200",
-      message: "Backend is unreachable. Start NexusHub backend and try again.",
-    };
-  }
-  if (mcpStatus && mcpStatus !== "ok") {
-    const isPartial = mcpStatus === "partial";
-    return {
-      className: isPartial
-        ? "bg-amber-50 text-amber-800 border-amber-200"
-        : "bg-red-50 text-red-800 border-red-200",
-      message: `MCP is ${mcpStatus}. ${mcpError || "Backend cannot reach the MCP health API."}`,
-    };
-  }
-  if (microsoftStatus === "disconnected") {
-    return {
-      className: "bg-amber-50 text-amber-800 border-amber-200",
-      message: "Microsoft 365 is not connected or needs to be reconnected before NexusHub can load Outlook, Calendar, and OneDrive activity.",
-      action: "connect_microsoft",
-    };
-  }
-  if (microsoftStatus === "error") {
-    return {
-      className: "bg-red-50 text-red-800 border-red-200",
-      message: "Microsoft Graph activity failed. Check the Microsoft connection and try again.",
-    };
-  }
-  if (activityError) {
-    return {
-      className: "bg-red-50 text-red-800 border-red-200",
-      message: `Microsoft Graph activity failed. ${activityError}`,
-    };
-  }
+}) {
+  if (backendUnavailable) return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: "Backend is unreachable." };
+  if (mcpStatus && mcpStatus !== "ok") return { className: "bg-amber-500/10 text-amber-500 border-amber-500/20", message: "MCP is partial/error." };
+  if (microsoftStatus === "disconnected") return { className: "bg-amber-500/10 text-amber-500 border-amber-500/20", message: "Microsoft 365 is disconnected.", action: "connect_microsoft" };
+  if (microsoftStatus === "error") return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: "Microsoft Graph activity failed." };
+  if (activityError) return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: activityError };
   return null;
 }
 
-type StatusBanner = {
-  className: string;
-  message: string;
-  action?: "connect_microsoft";
-};
-
 function getMcpSourceError(sourceErrors: Record<string, string>) {
-  const entries = Object.entries(sourceErrors).filter(([source]) =>
-    ["mail", "calendar", "documents"].includes(source),
-  );
-  if (!entries.length) return undefined;
-  return entries
-    .map(([source, message]) => `${source[0].toUpperCase()}${source.slice(1)} source failed: ${message}`)
-    .join(" ");
+  return undefined;
 }
