@@ -14,10 +14,10 @@ import { useMicrosoftStatus } from "@/features/auth/hooks";
 const navItems = [
   { name: "Home", href: "/command-center", icon: Home },
   { name: "Priorities", href: "/priorities", icon: Star },
-  { name: "Communications", href: "/communications", icon: MessageSquare },
+  { name: "Communications", href: "/mail", icon: MessageSquare },
   { name: "Calendar", href: "/calendar", icon: Calendar },
-  { name: "Documents", href: "/documents", icon: FileText },
-  { name: "Decisions", href: "/decisions", icon: Scale },
+  { name: "Documents", href: "/docs", icon: FileText },
+  { name: "Decisions", href: "/approvals", icon: Scale },
   { name: "Automations", href: "/automations", icon: Zap },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
