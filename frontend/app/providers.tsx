@@ -5,6 +5,8 @@ import { queryClient } from "@/lib/query/queryClient";
 import { syncUserIdFromCallbackUrl } from "@/lib/session/localUser";
 import { ReactNode, useEffect } from "react";
 
+import { CanvasProvider } from "@/features/canvas/CanvasContext";
+
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     const syncedUserId = syncUserIdFromCallbackUrl();
@@ -16,7 +18,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <CanvasProvider>
+        {children}
+      </CanvasProvider>
     </QueryClientProvider>
   );
 }

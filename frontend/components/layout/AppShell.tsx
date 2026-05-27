@@ -2,6 +2,7 @@
 
 import { Sidebar } from "./Sidebar";
 import { ExecutiveTopRail } from "../command-center/ExecutiveTopRail";
+import { ExecutionCanvasContainer } from "@/features/canvas/ExecutionCanvasContainer";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+      <ExecutionCanvasContainer />
     </div>
   );
 }

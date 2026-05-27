@@ -8,7 +8,7 @@ import { DecisionPanel } from "@/components/command-center/DecisionPanel";
 import { AlertCircle, Sparkles, Send } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
-import { useConnectMicrosoft } from "@/features/auth/hooks";
+import { useConnectMicrosoft, useMicrosoftStatus } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/features/session/hooks";
@@ -19,7 +19,14 @@ export default function CommandCenterPage() {
   const sendAgentMessage = useSendAgentMessage();
   const connectMicrosoft = useConnectMicrosoft();
   const { data: session } = useSession();
-  const userName = session?.status === "ok" ? session.user.display_name.split(" ")[0] : "Alex";
+  const { data: microsoftStatus } = useMicrosoftStatus();
+  
+  let userName = "Alex";
+  if (microsoftStatus?.connected && microsoftStatus.display_name) {
+    userName = microsoftStatus.display_name.split(" ")[0];
+  } else if (session?.status === "ok" && session.user.display_name !== "NexusHub User") {
+    userName = session.user.display_name.split(" ")[0];
+  }
 
   const { 
     items, 

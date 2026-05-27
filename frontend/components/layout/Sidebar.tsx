@@ -4,11 +4,12 @@ import { useUIStore } from "@/lib/store/uiStore";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Star, MessageSquare, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronDown } from "lucide-react";
+import { Home, Star, MessageSquare, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronDown, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./MobileNav";
 import { Sparkles } from "lucide-react";
 import { useSession } from "@/features/session/hooks";
+import { useMicrosoftStatus } from "@/features/auth/hooks";
 
 const navItems = [
   { name: "Home", href: "/command-center", icon: Home },
@@ -18,13 +19,22 @@ const navItems = [
   { name: "Documents", href: "/documents", icon: FileText },
   { name: "Decisions", href: "/decisions", icon: Scale },
   { name: "Automations", href: "/automations", icon: Zap },
+  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore();
   const pathname = usePathname();
   const { data: session } = useSession();
-  const userName = session?.status === "ok" ? session.user.display_name : "User";
+  const { data: microsoftStatus } = useMicrosoftStatus();
+
+  let userName = "Alex Carter";
+  if (microsoftStatus?.connected && microsoftStatus.display_name) {
+    userName = microsoftStatus.display_name;
+  } else if (session?.status === "ok" && session.user.display_name !== "NexusHub User") {
+    userName = session.user.display_name;
+  }
+  
   const initials = userName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
 
   return (

@@ -14,12 +14,14 @@ import {
 import { DraftCreateResponse, DraftReplyResponse, DraftSendResponse } from "@/features/mail/types";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
+import { useCanvas } from "@/features/canvas/CanvasContext";
 
 interface DecisionPanelProps {
   item: ActionItem | null;
 }
 
 export function DecisionPanel({ item }: DecisionPanelProps) {
+  const { openCanvas } = useCanvas();
   const approveAction = useApproveAction();
   const generateDraftReply = useGenerateDraftReply();
   const createOutlookDraft = useCreateOutlookDraft({ toastOnSuccess: false, toastOnError: false });
@@ -77,7 +79,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           <p className="text-xs text-muted-foreground mb-4">Total requested: $245,000. Changes require your sign-off by EOD.</p>
           <div className="flex gap-2">
             <Button size="sm" className="w-full bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-600/30"><Check className="h-3 w-3 mr-1"/> Approve</Button>
-            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground">Review</Button>
+            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground" onClick={() => openCanvas("document", { id: "budget", type: "document", title: "Q3 Budget Proposal", priority: "high", status: "pending", description: "Total requested: $245,000.", source: "NexusHub" })}>Review</Button>
           </div>
         </div>
 
@@ -90,7 +92,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           <p className="text-xs text-muted-foreground mb-4">Final creative assets for 'NexusHub Launch'. Ready for execution.</p>
           <div className="flex gap-2">
             <Button size="sm" className="w-full bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-600/30"><Check className="h-3 w-3 mr-1"/> Approve</Button>
-            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground">Review</Button>
+            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground" onClick={() => openCanvas("document", { id: "marketing", type: "document", title: "Marketing Campaign Launch", priority: "high", status: "pending", description: "Final creative assets.", source: "NexusHub" })}>Review</Button>
           </div>
         </div>
 
@@ -103,7 +105,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
           <p className="text-xs text-muted-foreground mb-4">Contoso annual renewal. 5% price increase. Standard terms.</p>
           <div className="flex gap-2">
             <Button size="sm" className="w-full bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-600/30"><Check className="h-3 w-3 mr-1"/> Approve</Button>
-            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground">Review</Button>
+            <Button size="sm" variant="outline" className="w-full bg-transparent border-white/10 text-muted-foreground" onClick={() => openCanvas("document", { id: "vendor", type: "document", title: "Vendor Contract Renewal", priority: "high", status: "pending", description: "Contoso annual renewal.", source: "NexusHub" })}>Review</Button>
           </div>
         </div>
       </div>
@@ -147,7 +149,15 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
         </section>
 
         {/* Action button */}
-        <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.3)] h-12 rounded-xl text-base" onClick={() => approveExistingApproval()}>
+        <Button 
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.3)] h-12 rounded-xl text-base" 
+          onClick={() => {
+            if (item.type === "email") openCanvas("email", item);
+            else if (item.type === "calendar") openCanvas("meeting", item);
+            else if (item.type === "document") openCanvas("document", item);
+            else openCanvas("document", item); // Fallback for approvals/teams
+          }}
+        >
           <Scale className="mr-2 h-5 w-5" />
           Take Action
         </Button>
