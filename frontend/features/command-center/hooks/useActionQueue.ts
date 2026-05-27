@@ -17,8 +17,8 @@ export function useCommandCenterFeed() {
   });
 }
 
-export function useActionQueue() {
-  const [activeFilter, setActiveFilter] = useState<string>("all");
+export function useActionQueue(initialFilter: string = "all") {
+  const [activeFilter, setActiveFilter] = useState<string>(initialFilter);
   const [selectedItem, setSelectedItem] = useState<ActionItem | null>(null);
   const feedQuery = useCommandCenterFeed();
   const items = useMemo(() => feedQuery.data?.items || [], [feedQuery.data?.items]);

@@ -12,11 +12,12 @@ services:
       - mcp-server
 
   mcp-server:
-    build: ./nexushub-mcp-server
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
     ports:
       - "8010:8010"
-    env_file:
-      - ./nexushub-mcp-server/.env
+    env_file: ./mcp-server/.env
     environment:
       NEXUSHUB_MODE: graph
       MCP_TRANSPORT: streamable-http

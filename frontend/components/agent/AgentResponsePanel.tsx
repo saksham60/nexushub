@@ -7,8 +7,35 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useConnectMicrosoft } from "@/features/auth/hooks";
 
-export function AgentResponsePanel({ response }: { response: AgentChatResponse | null }) {
+interface AgentResponsePanelProps {
+  response: AgentChatResponse | null;
+  isLoading?: boolean;
+  error?: Error | null;
+  onConnect?: () => void;
+}
+
+export function AgentResponsePanel({ response, isLoading, error, onConnect }: AgentResponsePanelProps) {
   const connectMicrosoft = useConnectMicrosoft();
+
+  if (isLoading) {
+    return (
+      <Alert className="border-primary/20 bg-primary/5 text-primary">
+        <AlertCircle className="h-4 w-4 animate-pulse" />
+        <AlertTitle>Thinking...</AlertTitle>
+        <AlertDescription>NexusHub is processing your request.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Request failed</AlertTitle>
+        <AlertDescription>{error.message}</AlertDescription>
+      </Alert>
+    );
+  }
 
   if (!response) return null;
 
@@ -19,7 +46,7 @@ export function AgentResponsePanel({ response }: { response: AgentChatResponse |
         <AlertTitle className="text-amber-800">Connect Microsoft 365</AlertTitle>
         <AlertDescription className="mt-2 flex flex-col items-start gap-3 text-amber-700">
           {response.message}
-          <Button onClick={() => connectMicrosoft()} variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100">
+          <Button onClick={onConnect || connectMicrosoft} variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100">
             <LinkIcon className="mr-2 h-4 w-4" />
             Connect Microsoft 365
           </Button>

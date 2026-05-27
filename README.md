@@ -38,48 +38,51 @@ MCP_TRANSPORT=stdio
 
 Claude Desktop should launch the process itself.
 
-## Run Backend And MCP Containers
+## Local Development Setup
+
+### Backend
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --host 127.0.0.1 --port 3001
+```
+
+### MCP HTTP local
+
+```powershell
+cd mcp-server
+python -m pip install -r requirements.txt
+$env:PYTHONPATH="src"
+$env:MCP_TRANSPORT="streamable-http"
+$env:NEXUSHUB_MODE="mock"
+$env:MCP_HOST="127.0.0.1"
+$env:MCP_PORT="8010"
+python -m nexushub_mcp
+```
+
+### Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+### Verification
+
+```powershell
+curl http://127.0.0.1:8010/health
+curl http://127.0.0.1:3001/health
+```
+
+## Run with Docker Compose
 
 Create env files:
 
 ```bash
 cp backend/.env.example backend/.env
-cp nexushub-mcp-server/.env.example nexushub-mcp-server/.env
-```
-
-Set the same strong value in both env files:
-
-```env
-INTERNAL_SERVICE_TOKEN=<shared-secret>
-```
-
-Set backend-only values:
-
-```env
-MICROSOFT_CLIENT_ID=
-MICROSOFT_CLIENT_SECRET=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-TOKEN_ENCRYPTION_KEY=
-```
-
-Generate a Fernet key:
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-Start services:
-
-```bash
-docker compose up --build
-```
-
-Health checks:
-
-```text
-GET http://localhost:3001/health
-GET http://localhost:8010/health
+cp mcp-server/.env.example mcp-server/.env
 ```
 
 ## Microsoft Entra Setup

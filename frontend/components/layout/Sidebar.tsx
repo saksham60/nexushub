@@ -3,7 +3,7 @@
 import { useUIStore } from "@/lib/store/uiStore";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Home, Star, MessageSquare, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronDown, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./MobileNav";
@@ -13,18 +13,19 @@ import { useMicrosoftStatus } from "@/features/auth/hooks";
 
 const navItems = [
   { name: "Home", href: "/command-center", icon: Home },
-  { name: "Priorities", href: "/priorities", icon: Star },
-  { name: "Communications", href: "/mail", icon: MessageSquare },
-  { name: "Calendar", href: "/calendar", icon: Calendar },
-  { name: "Documents", href: "/docs", icon: FileText },
-  { name: "Decisions", href: "/approvals", icon: Scale },
-  { name: "Automations", href: "/automations", icon: Zap },
+  { name: "Priorities", href: "/command-center?filter=all", icon: Star },
+  { name: "Communications", href: "/command-center?filter=email", icon: MessageSquare },
+  { name: "Calendar", href: "/command-center?filter=calendar", icon: Calendar },
+  { name: "Documents", href: "/command-center?filter=document", icon: FileText },
+  { name: "Decisions", href: "/command-center?filter=approval", icon: Scale },
+  { name: "Automations", href: "/command-center?filter=report", icon: Zap },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { data: microsoftStatus } = useMicrosoftStatus();
 
@@ -71,7 +72,26 @@ export function Sidebar() {
         <div className="flex-1 overflow-y-auto py-4 scrollbar-none">
           <nav className="space-y-2 px-3">
             {navItems.map((item) => {
-              const isActive = pathname.startsWith(item.href) || (pathname === '/' && item.name === 'Home');
+              const itemUrl = new URL(item.href, "http://localhost");
+              const itemPath = itemUrl.pathname;
+              const itemFilter = itemUrl.searchParams.get("filter");
+              const currentFilter = searchParams?.get("filter");
+              
+              let isActive = false;
+              if (pathname === itemPath) {
+                if (itemFilter && currentFilter) {
+                  isActive = itemFilter === currentFilter;
+                } else if (!itemFilter && !currentFilter) {
+                  isActive = true;
+                } else if (itemPath === "/command-center" && !itemFilter && currentFilter === "all") {
+                  isActive = true; // Fallback logic
+                } else if (itemPath === "/command-center" && itemFilter === "all" && !currentFilter) {
+                  isActive = true; // Home / Priorities mapping
+                }
+              }
+              // Strict home match if nothing else
+              if (item.name === "Home" && pathname === "/" && !currentFilter) isActive = true;
+
               return (
                 <Link
                   key={item.name}

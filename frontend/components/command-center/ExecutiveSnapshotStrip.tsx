@@ -19,12 +19,12 @@ export function ExecutiveSnapshotStrip({ items, counts, activeFilter, onFilter }
   const priorityCount = items.filter(i => i.priority === "high").length;
 
   const stats = [
-    { label: "Top Priorities", count: priorityCount || 7, icon: Star, color: "text-purple-400", filter: "all", detail: "2 overdue", detailColor: "text-red-400" },
-    { label: "Calendar", count: meetingCount || 5, icon: Calendar, color: "text-blue-400", filter: "calendar", detail: "Next in 30 min", detailColor: "text-blue-400" },
-    { label: "Unread Email", count: emailCount || 12, icon: Mail, color: "text-blue-400", filter: "email", detail: "6 from VIPs", detailColor: "text-blue-400" },
-    { label: "Teams Activity", count: teamCount || 8, icon: Users, color: "text-indigo-400", filter: "team", detail: "3 urgent", detailColor: "text-red-400" },
-    { label: "Doc Changes", count: docCount || 14, icon: FileText, color: "text-blue-400", filter: "document", detail: "4 require review", detailColor: "text-blue-400" },
-    { label: "Automations", count: 5, icon: Zap, color: "text-emerald-400", filter: "approval", detail: "2 completed", detailColor: "text-emerald-400" },
+    { label: "Top Priorities", count: priorityCount || 0, icon: Star, color: "text-purple-400", filter: "all", detail: priorityCount > 0 ? `${priorityCount} items` : "All clear", detailColor: priorityCount > 0 ? "text-purple-400" : "text-muted-foreground" },
+    { label: "Calendar", count: meetingCount || 0, icon: Calendar, color: "text-blue-400", filter: "calendar", detail: meetingCount > 0 ? "Check schedule" : "No meetings", detailColor: meetingCount > 0 ? "text-blue-400" : "text-muted-foreground" },
+    { label: "Unread Email", count: emailCount || 0, icon: Mail, color: "text-blue-400", filter: "email", detail: emailCount > 0 ? "Needs reply" : "Inbox zero", detailColor: emailCount > 0 ? "text-blue-400" : "text-muted-foreground" },
+    { label: "Teams Activity", count: teamCount || 0, icon: Users, color: "text-indigo-400", filter: "team", detail: teamCount > 0 ? "New mentions" : "All caught up", detailColor: teamCount > 0 ? "text-indigo-400" : "text-muted-foreground" },
+    { label: "Doc Changes", count: docCount || 0, icon: FileText, color: "text-blue-400", filter: "document", detail: docCount > 0 ? "To review" : "Up to date", detailColor: docCount > 0 ? "text-blue-400" : "text-muted-foreground" },
+    { label: "Automations", count: items.filter(i => i.type === "report").length || 0, icon: Zap, color: "text-emerald-400", filter: "report", detail: "Active", detailColor: "text-emerald-400" },
   ];
 
   return (

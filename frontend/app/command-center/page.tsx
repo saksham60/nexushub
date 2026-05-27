@@ -8,10 +8,13 @@ import { DecisionPanel } from "@/components/command-center/DecisionPanel";
 import { AlertCircle, Sparkles, Send } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
+import { AgentResponsePanel } from "@/components/agent/AgentResponsePanel";
 import { useConnectMicrosoft, useMicrosoftStatus } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/features/session/hooks";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 export default function CommandCenterPage() {
   const [agentResponse, setAgentResponse] = useState<AgentChatResponse | null>(null);
@@ -20,19 +23,23 @@ export default function CommandCenterPage() {
   const connectMicrosoft = useConnectMicrosoft();
   const { data: session } = useSession();
   const { data: microsoftStatus } = useMicrosoftStatus();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   
-  let userName = "Alex";
-  if (microsoftStatus?.connected && microsoftStatus.display_name) {
+  let userName: string | null = null;
+  if (microsoftStatus?.connected && microsoftStatus.display_name && !microsoftStatus.display_name.includes("NexusHub")) {
     userName = microsoftStatus.display_name.split(" ")[0];
-  } else if (session?.status === "ok" && session.user.display_name !== "NexusHub User") {
+  } else if (session?.status === "ok" && !session.user.display_name.includes("NexusHub")) {
     userName = session.user.display_name.split(" ")[0];
   }
+
+  const initialFilter = searchParams?.get("filter") || "all";
 
   const { 
     items, 
     filteredItems, 
     counts,
-    topInsight,
     health,
     sourceErrors,
     isLoading, 
@@ -42,7 +49,21 @@ export default function CommandCenterPage() {
     setActiveFilter, 
     selectedItem, 
     setSelectedItem 
-  } = useActionQueue();
+  } = useActionQueue(initialFilter);
+
+  useEffect(() => {
+    const filter = searchParams?.get("filter") || "all";
+    if (filter !== activeFilter) {
+      setActiveFilter(filter);
+    }
+  }, [searchParams, activeFilter, setActiveFilter]);
+
+  const handleFilterChange = (newFilter: string) => {
+    setActiveFilter(newFilter);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    params.set("filter", newFilter);
+    router.replace(`${pathname}?${params.toString()}`);
+  };
   
   const statusBanner = getStatusBanner({
     backendUnavailable: !health && isError,
@@ -85,7 +106,7 @@ export default function CommandCenterPage() {
       {/* Greeting Section */}
       <div className="text-center space-y-2 mt-4">
         <h1 className="text-4xl font-medium tracking-tight text-foreground">
-          Good afternoon, <span className="text-primary">{userName}</span>.
+          Good afternoon{userName ? <>, <span className="text-primary">{userName}</span></> : ""}.
         </h1>
         <p className="text-muted-foreground text-sm font-medium">
           Your executive work cockpit. AI-powered. Microsoft 365 connected.
@@ -110,39 +131,45 @@ export default function CommandCenterPage() {
             <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-white/5 border border-white/10 text-muted-foreground text-xs font-mono">
               <span>⌘</span><span>K</span>
             </div>
-            <Button size="icon" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.5)]" onClick={() => runPrompt(promptInput)}>
+            <Button disabled={sendAgentMessage.isPending} size="icon" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.5)]" onClick={() => runPrompt(promptInput)}>
               <Send className="h-4 w-4 ml-0.5" />
             </Button>
           </div>
         </div>
+        {(agentResponse || sendAgentMessage.isPending || sendAgentMessage.isError) && (
+          <div className="mt-4 w-full">
+            <AgentResponsePanel
+              response={agentResponse}
+              isLoading={sendAgentMessage.isPending}
+              error={sendAgentMessage.error}
+              onConnect={() => connectMicrosoft()}
+            />
+          </div>
+        )}
       </div>
 
       <ExecutiveSnapshotStrip
         items={items}
         counts={counts}
         activeFilter={activeFilter}
-        onFilter={setActiveFilter}
+        onFilter={handleFilterChange}
       />
 
-      <div id="work-feed" className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-7 xl:col-span-7">
-          <div className="h-[520px] min-h-[440px]">
-            <PriorityWorkFeed 
-              items={filteredItems}
-              activeFilter={activeFilter}
-              setActiveFilter={setActiveFilter}
-              selectedItem={selectedItem}
-              setSelectedItem={setSelectedItem}
-              isLoading={isLoading}
-            />
-          </div>
+      <div id="work-feed" className="grid grid-cols-1 gap-6 lg:grid-cols-12 min-h-[440px]">
+        <div className="lg:col-span-7 xl:col-span-7 flex flex-col">
+          <PriorityWorkFeed 
+            items={filteredItems}
+            activeFilter={activeFilter}
+            setActiveFilter={handleFilterChange}
+            selectedItem={selectedItem}
+            setSelectedItem={setSelectedItem}
+            isLoading={isLoading}
+          />
         </div>
 
-        <div className="lg:col-span-5 xl:col-span-5">
-          <div className="h-[520px] min-h-[440px] flex flex-col">
-            <h3 className="text-base font-semibold text-foreground mb-4 pl-1">Decision Desk</h3>
-            <DecisionPanel item={selectedItem} />
-          </div>
+        <div className="lg:col-span-5 xl:col-span-5 flex flex-col">
+          <h3 className="text-base font-semibold text-foreground mb-4 pl-1">Decision Desk</h3>
+          <DecisionPanel item={selectedItem} />
         </div>
       </div>
 
@@ -200,7 +227,7 @@ function getStatusBanner({
   activityError?: string | null;
 }) {
   if (backendUnavailable) return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: "Backend is unreachable." };
-  if (mcpStatus && mcpStatus !== "ok") return { className: "bg-amber-500/10 text-amber-500 border-amber-500/20", message: "MCP is partial/error." };
+  if (mcpStatus && mcpStatus !== "ok") return { className: "bg-amber-500/10 text-amber-500 border-amber-500/20", message: mcpError || "MCP is partial/error." };
   if (microsoftStatus === "disconnected") return { className: "bg-amber-500/10 text-amber-500 border-amber-500/20", message: "Microsoft 365 is disconnected.", action: "connect_microsoft" };
   if (microsoftStatus === "error") return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: "Microsoft Graph activity failed." };
   if (activityError) return { className: "bg-red-500/10 text-red-500 border-red-500/20", message: activityError };
@@ -208,5 +235,11 @@ function getStatusBanner({
 }
 
 function getMcpSourceError(sourceErrors: Record<string, string>) {
+  if (sourceErrors?.mcp) {
+    if (sourceErrors.mcp.includes("Connection refused") || sourceErrors.mcp.includes("unreachable")) {
+      return `MCP is unreachable at http://localhost:8010. Start the MCP HTTP server or check MCP_SIMPLE_TOOL_URL.`;
+    }
+    return sourceErrors.mcp;
+  }
   return undefined;
 }
