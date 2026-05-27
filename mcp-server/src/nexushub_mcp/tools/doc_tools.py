@@ -77,8 +77,8 @@ def register_doc_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
     @traceable(run_type="tool")
     async def docs_build_report(
         fileName: str,
-        reportType: Literal["executive_summary", "budget_review", "project_status", "risk_report"] = "executive_summary",
-        audience: Literal["leadership", "team", "client"] = "leadership",
+        reportType: str = "executive_summary",
+        audience: str = "leadership",
     ) -> dict[str, Any]:
         log_tool_call(
             logger,
