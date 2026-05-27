@@ -36,7 +36,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         workspace_id: str | None = None,
         days: int = 7,
         maxResults: int = 10,
-        priority: Priority = "all",
+        priority: Literal["all", "high", "medium", "low"] = "all",
     ) -> dict[str, Any]:
         log_tool_call(
             logger,
@@ -221,7 +221,7 @@ def register_mail_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         context: str,
         user_id: str | None = None,
         workspace_id: str | None = None,
-        tone: Tone = "professional",
+        tone: Literal["professional", "concise", "friendly"] = "professional",
         intent: str | None = None,
         originalMessageId: str | None = None,
     ) -> dict[str, Any]:
@@ -496,7 +496,7 @@ def _body_content(message: dict[str, Any]) -> str | None:
     return None
 
 
-def _draft_reply(*, to: str, subject: str, context: str, tone: Tone, intent: str | None) -> str:
+def _draft_reply(*, to: str, subject: str, context: str, tone: Literal["professional", "concise", "friendly"], intent: str | None) -> str:
     greeting = f"Hi {to.split('@')[0].split('.')[0].title()}," if "@" in to else f"Hi {to},"
     intent_line = intent or "sharing my response based on the current context"
     if tone == "concise":
