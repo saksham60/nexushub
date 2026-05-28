@@ -4,7 +4,7 @@ import { useUIStore } from "@/lib/store/uiStore";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Home, Inbox, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronRight, ChevronDown, Settings } from "lucide-react";
+import { Home, Inbox, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronRight, ChevronDown, Settings, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./MobileNav";
 import { Sparkles } from "lucide-react";
@@ -18,6 +18,7 @@ const navItems = [
   { name: "Doc Intelligence", href: "/doc-intelligence", icon: FileText },
   { name: "Approvals", href: "/approvals", icon: Scale },
   { name: "Automations", href: "/automations", icon: Zap },
+  { name: "Knowledge Graph", href: "/knowledge", icon: Network },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

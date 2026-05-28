@@ -5,6 +5,7 @@ import { useActionQueue } from "@/features/command-center/hooks/useActionQueue";
 import { ExecutiveSnapshotStrip } from "@/components/command-center/ExecutiveSnapshotStrip";
 import { PriorityWorkFeed } from "@/components/command-center/PriorityWorkFeed";
 import { DecisionPanel } from "@/components/command-center/DecisionPanel";
+import { KnowledgeGraphWidget } from "@/features/knowledge/components/KnowledgeGraphWidget";
 import { AlertCircle, Sparkles, Send } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
@@ -214,13 +215,18 @@ export default function CommandCenterPage() {
       </div>
 
       <div className="pt-6">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <InsightMiniCard title="Outlook" value="Email volume is up 18% vs last 2 weeks" trend="up" color="blue" />
-          <InsightMiniCard title="Teams" value="You've been mentioned 23 times this week" trend="up" color="indigo" />
-          <InsightMiniCard title="Word" value="7 documents need your review" trend="down" color="blue" />
-          <InsightMiniCard title="Excel" value="Q3 forecast updated by Finance team" trend="up" color="emerald" />
-          <InsightMiniCard title="PowerPoint" value="2 decks are ready for your review" trend="up" color="orange" />
-          <InsightMiniCard title="OneNote" value="3 new notes from Leadership Sync" trend="up" color="purple" />
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-8 grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <InsightMiniCard title="Outlook" value="Email volume is up 18% vs last 2 weeks" trend="up" color="blue" />
+            <InsightMiniCard title="Teams" value="You've been mentioned 23 times this week" trend="up" color="indigo" />
+            <InsightMiniCard title="Word" value="7 documents need your review" trend="down" color="blue" />
+            <InsightMiniCard title="Excel" value="Q3 forecast updated by Finance team" trend="up" color="emerald" />
+            <InsightMiniCard title="PowerPoint" value="2 decks are ready for your review" trend="up" color="orange" />
+            <InsightMiniCard title="OneNote" value="3 new notes from Leadership Sync" trend="up" color="purple" />
+          </div>
+          <div className="md:col-span-4 min-h-[200px]">
+            <KnowledgeGraphWidget />
+          </div>
         </div>
       </div>
     </div>

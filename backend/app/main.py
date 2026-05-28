@@ -15,6 +15,7 @@ from app.api import (
     internal_graph,
     mail,
     tools,
+    knowledge_graph,
 )
 from app.config import get_settings
 from app.core.logging import configure_logging
@@ -46,3 +47,4 @@ app.include_router(mail.internal_router)
 app.include_router(approvals.router)
 app.include_router(internal_graph.router)
 app.include_router(internal_approvals.router)
+app.include_router(knowledge_graph.router)

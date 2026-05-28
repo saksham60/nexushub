@@ -18,6 +18,9 @@ from app.services.agent_memory import AgentConversationMemory, PendingAgentInten
 from app.services.calendar_reschedule_service import CalendarRescheduleService
 from app.services.mcp_client import call_tool
 from app.services.semantic_agent_router import SemanticAgentRouter, SemanticRoutingDecision
+from app.services.knowledge_graph_service import KnowledgeGraphService
+from app.services.microsoft_graph_service import MicrosoftGraphService
+from app.config import get_settings
 
 logger = get_logger(__name__)
 
@@ -47,12 +50,39 @@ class AgentOrchestrator:
             routing_context["pendingIntent"] = pending.to_context(message)
             routing_message = _follow_up_message(message=message, pending=pending)
 
+        # Search Knowledge Graph for Context
+        try:
+            settings = get_settings()
+            ms_graph = MicrosoftGraphService(settings)
+            kg_service = KnowledgeGraphService(ms_graph)
+            graph = await kg_service.build_knowledge_graph(user_id=user_id, workspace_id=workspace_id or "default", limit=50)
+            
+            # Simple keyword matching for MVP
+            query_lower = message.lower()
+            matched_nodes = [n for n in graph.nodes if n.label.lower() in query_lower or (n.title and n.title.lower() in query_lower)]
+            
+            if matched_nodes:
+                routing_context["knowledgeContext"] = {
+                    "matchedEntities": [n.model_dump() for n in matched_nodes],
+                    "relatedEntities": [], # simplified for MVP
+                    "relationshipSummary": f"Found {len(matched_nodes)} related workspace entities."
+                }
+                # Inject a brief summary into the message for the LLM
+                labels = ", ".join([n.label for n in matched_nodes[:5]])
+                routing_message = f"{message}\n[Workspace Context: Found related entities: {labels}]"
+        except Exception as e:
+            logger.warning(f"Failed to fetch knowledge graph context: {e}")
+
         response, decision = await self._chat_once(
             user_id=user_id,
             workspace_id=workspace_id,
             message=routing_message,
             selected_context=routing_context,
         )
+        
+        # Attach knowledgeContext to final response if found
+        if "knowledgeContext" in routing_context:
+            response["knowledgeContext"] = routing_context["knowledgeContext"]
 
         if response.get("type") == "clarification":
             saved = memory.save_pending(

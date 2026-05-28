@@ -74,3 +74,54 @@ create table if not exists audit_logs (
   metadata jsonb,
   created_at timestamptz default now()
 );
+
+create table if not exists knowledge_nodes (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id),
+  user_id uuid references users(id),
+
+  external_id text,
+  type text not null,
+  label text not null,
+  source text not null,
+
+  title text,
+  subtitle text,
+  priority text,
+  status text,
+
+  metadata jsonb default '{}'::jsonb,
+
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists knowledge_edges (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id),
+  user_id uuid references users(id),
+
+  source_node_id uuid not null,
+  target_node_id uuid not null,
+
+  type text not null,
+  label text,
+  weight float default 1.0,
+  source_system text not null,
+
+  metadata jsonb default '{}'::jsonb,
+
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists knowledge_entity_aliases (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id),
+
+  canonical_node_id uuid not null,
+  alias text not null,
+  alias_type text,
+
+  created_at timestamptz default now()
+);
