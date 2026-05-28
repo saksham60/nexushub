@@ -22,7 +22,7 @@ from app.core.errors import (
 )
 from app.services.openai_llm_service import OpenAILLMService
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".csv", ".txt", ".md", ".html", ".htm"}
 EXECUTABLE_EXTENSIONS = {
     ".bat",
     ".cmd",
@@ -40,8 +40,11 @@ ALLOWED_MIME_PREFIXES = {"text/"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
+    "text/markdown",
+    "text/html",
     "text/csv",
     "application/csv",
     "application/octet-stream",
@@ -196,11 +199,13 @@ class DocumentService:
             text, stats = _extract_pdf(path)
         elif extension == ".docx":
             text, stats = _extract_docx(path)
+        elif extension == ".pptx":
+            text, stats = _extract_pptx(path)
         elif extension == ".xlsx":
             text, stats = _extract_xlsx(path)
         elif extension == ".csv":
             text, stats = _extract_csv(path)
-        elif extension == ".txt":
+        elif extension in {".txt", ".md", ".html", ".htm"}:
             text, stats = _extract_txt(path)
         else:
             raise UnsupportedDocumentError(f"Unsupported file extension: {extension}")
@@ -315,6 +320,41 @@ def _extract_docx(path: Path) -> tuple[str, dict[str, Any]]:
     except Exception as exc:
         raise DocumentParsingError("Could not parse DOCX document.") from exc
     return "\n".join([*paragraphs, *table_cells]), {"pages": None, "sheets": 0, "parser": "python-docx"}
+
+
+def _extract_pptx(path: Path) -> tuple[str, dict[str, Any]]:
+    try:
+        from pptx import Presentation
+    except ImportError as exc:
+        raise DocumentParsingError("PPTX parsing dependency python-pptx is not installed.") from exc
+    try:
+        presentation = Presentation(str(path))
+        lines: list[str] = []
+        for index, slide in enumerate(presentation.slides, start=1):
+            slide_lines: list[str] = []
+            for shape in slide.shapes:
+                if getattr(shape, "has_text_frame", False):
+                    text = "\n".join(
+                        paragraph.text
+                        for paragraph in shape.text_frame.paragraphs
+                        if paragraph.text.strip()
+                    )
+                    if text.strip():
+                        slide_lines.append(text.strip())
+                if getattr(shape, "has_table", False):
+                    for row in shape.table.rows:
+                        values = [
+                            cell.text.strip()
+                            for cell in row.cells
+                            if cell.text and cell.text.strip()
+                        ]
+                        if values:
+                            slide_lines.append(" | ".join(values))
+            if slide_lines:
+                lines.append(f"Slide {index}\n" + "\n".join(slide_lines))
+    except Exception as exc:
+        raise DocumentParsingError("Could not parse PPTX document.") from exc
+    return "\n\n".join(lines), {"pages": len(presentation.slides), "sheets": 0, "parser": "python-pptx"}
 
 
 def _extract_xlsx(path: Path) -> tuple[str, dict[str, Any]]:

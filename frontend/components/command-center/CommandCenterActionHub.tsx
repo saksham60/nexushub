@@ -115,7 +115,7 @@ export function CommandCenterActionHub({
                 id="action-hub-file-upload"
                 className="hidden"
                 onChange={handleFileChange}
-                accept=".pdf,.docx,.xlsx,.csv,.txt"
+                accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.htm"
               />
               <FileUp className="h-4 w-4" />
               <span className="max-w-48 truncate">

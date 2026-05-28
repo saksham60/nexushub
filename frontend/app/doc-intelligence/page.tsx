@@ -1,4 +1,5 @@
 import { ModulePage } from "@/components/modules/ModulePage";
+import { DocIntelligenceUploadPanel } from "@/components/modules/DocIntelligenceUploadPanel";
 
 export default function DocIntelligencePage() {
   return (
@@ -9,6 +10,8 @@ export default function DocIntelligencePage() {
       icon="document"
       emptyTitle="No documents need review"
       emptyDescription="Recent files, uploaded documents, analysis reports, and generated briefs will appear here."
-    />
+    >
+      <DocIntelligenceUploadPanel />
+    </ModulePage>
   );
 }

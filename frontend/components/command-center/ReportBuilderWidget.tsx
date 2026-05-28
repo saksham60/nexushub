@@ -74,7 +74,7 @@ export function ReportBuilderWidget() {
             id="compact-file-upload" 
             className="hidden" 
             onChange={handleFileChange}
-            accept=".pdf,.docx,.xlsx,.csv,.txt"
+            accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.html,.htm"
             disabled={isGenerating}
           />
           {selectedFile ? (
@@ -85,7 +85,7 @@ export function ReportBuilderWidget() {
           ) : (
             <div className="flex flex-col items-center">
               <FileUp className="h-6 w-6 text-zinc-400 mb-1" />
-              <span className="text-sm text-zinc-500">Upload PDF, DOCX, XLSX</span>
+              <span className="text-sm text-zinc-500">Upload PDF, DOCX, PPTX, XLSX</span>
             </div>
           )}
         </div>

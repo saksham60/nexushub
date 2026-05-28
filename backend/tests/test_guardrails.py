@@ -95,6 +95,20 @@ class DocumentGuardrailTests(unittest.IsolatedAsyncioTestCase):
                 content_type="application/x-msdownload",
             )
 
+    def test_common_business_document_types_are_allowed(self) -> None:
+        service = DocumentService(settings=Settings())
+        for filename, content_type in (
+            ("deck.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+            ("notes.md", "text/markdown"),
+            ("brief.html", "text/html"),
+        ):
+            with self.subTest(filename=filename):
+                service._validate_file(
+                    filename=filename,
+                    extension=Path(filename).suffix,
+                    content_type=content_type,
+                )
+
     def test_empty_text_extraction_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             _write_document(tempdir=tempdir, document_id="empty", filename="empty.txt", content="")
