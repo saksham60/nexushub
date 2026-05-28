@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 import { ensureUserId } from "@/lib/session/localUser";
 import { normalizeApprovalId } from "./ids";
+import { clearResolvedApprovalFromCaches } from "./cache";
 
 export function useApprovals({ status, cursor, limit }: { status: string; cursor?: string | null; limit: number }) {
   return useQuery<PaginatedResponse<ApprovalAction>>({
@@ -45,9 +46,9 @@ export function useApproveAction() {
         `${endpoints.approvalApprove(normalizedApprovalId)}?user_id=${encodeURIComponent(ensureUserId())}`,
       );
     },
-    onSuccess: () => {
+    onSuccess: (data, approvalId) => {
       toast.success("Action approved successfully.");
-      queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      clearResolvedApprovalFromCaches(queryClient, approvalId, data);
     },
     onError: (error) => {
       toast.error(getFriendlyErrorMessage(error));
@@ -65,9 +66,9 @@ export function useRejectAction() {
         `${endpoints.approvalReject(normalizedApprovalId)}?user_id=${encodeURIComponent(ensureUserId())}`,
       );
     },
-    onSuccess: () => {
+    onSuccess: (data, approvalId) => {
       toast.success("Action rejected.");
-      queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      clearResolvedApprovalFromCaches(queryClient, approvalId, data);
     },
     onError: (error) => {
       toast.error(getFriendlyErrorMessage(error));

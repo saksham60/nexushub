@@ -76,7 +76,7 @@ export function ApprovalCanvas() {
           variant="outline"
           className="border-white/10 bg-white/5"
           disabled={!approvalId || isWorking}
-          onClick={() => rejectAction.mutate(approvalId)}
+          onClick={() => rejectAction.mutate(approvalId, { onSuccess: closeCanvas })}
         >
           <X className="mr-2 h-4 w-4" />
           Reject
@@ -84,7 +84,7 @@ export function ApprovalCanvas() {
         <Button
           className="bg-primary text-primary-foreground hover:bg-primary/90"
           disabled={!approvalId || isWorking}
-          onClick={() => approveAction.mutate(approvalId)}
+          onClick={() => approveAction.mutate(approvalId, { onSuccess: closeCanvas })}
         >
           <Check className="mr-2 h-4 w-4" />
           {approveAction.isPending ? "Approving..." : "Approve & Execute"}
