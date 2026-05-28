@@ -6,6 +6,7 @@ import { queryKeys } from "@/lib/query/queryKeys";
 import { toast } from "sonner";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 import { ensureUserId } from "@/lib/session/localUser";
+import { normalizeApprovalId } from "./ids";
 
 export function useApprovals({ status, cursor, limit }: { status: string; cursor?: string | null; limit: number }) {
   return useQuery<PaginatedResponse<ApprovalAction>>({
@@ -38,8 +39,12 @@ export function useApproveAction() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (approvalId: string) =>
-      apiClient.post(`${endpoints.approvalApprove(approvalId)}?user_id=${encodeURIComponent(ensureUserId())}`),
+    mutationFn: (approvalId: string) => {
+      const normalizedApprovalId = normalizeApprovalId(approvalId);
+      return apiClient.post(
+        `${endpoints.approvalApprove(normalizedApprovalId)}?user_id=${encodeURIComponent(ensureUserId())}`,
+      );
+    },
     onSuccess: () => {
       toast.success("Action approved successfully.");
       queryClient.invalidateQueries({ queryKey: ["approvals"] });
@@ -54,8 +59,12 @@ export function useRejectAction() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (approvalId: string) =>
-      apiClient.post(`${endpoints.approvalReject(approvalId)}?user_id=${encodeURIComponent(ensureUserId())}`),
+    mutationFn: (approvalId: string) => {
+      const normalizedApprovalId = normalizeApprovalId(approvalId);
+      return apiClient.post(
+        `${endpoints.approvalReject(normalizedApprovalId)}?user_id=${encodeURIComponent(ensureUserId())}`,
+      );
+    },
     onSuccess: () => {
       toast.success("Action rejected.");
       queryClient.invalidateQueries({ queryKey: ["approvals"] });

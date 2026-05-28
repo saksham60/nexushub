@@ -1,36 +1,57 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCanvas } from "./CanvasContext";
 import { Mail, Sparkles, Send, Save, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGenerateDraftReply, useCreateOutlookDraft, useSendOutlookDraft } from "@/features/mail/hooks";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
+import { normalizeApprovalId } from "@/features/approvals/ids";
+import { CanvasStatusBanner } from "./CanvasStatusBanner";
 
 export function EmailCanvas() {
-  const { actionItem } = useCanvas();
+  const { actionItem, canvasPayload, closeCanvas } = useCanvas();
   const generateDraft = useGenerateDraftReply();
   const createDraft = useCreateOutlookDraft();
   const sendDraft = useSendOutlookDraft();
 
-  const [body, setBody] = useState("");
-  const [outlookDraftId, setOutlookDraftId] = useState<string | null>(null);
-
-  const metadata = (actionItem?.metadata || {}) as Record<string, any>;
-  const subject = metadata.subject || actionItem?.title || "No Subject";
-  const from = actionItem?.person || metadata.from || "Unknown Sender";
+  const metadata = {
+    ...((actionItem?.metadata || {}) as Record<string, any>),
+    ...((canvasPayload || {}) as Record<string, any>),
+  };
+  const subject = metadata.subject || metadata.title || actionItem?.title || "No Subject";
+  const from = actionItem?.person || senderLabel(metadata.from) || "Unknown Sender";
   const originalBody = metadata.bodyPreview || actionItem?.description || "No preview available.";
   
   // Extract recipients safely
-  const replyTo = Array.isArray(metadata.replyTo) ? metadata.replyTo : [];
-  const primaryRecipient = typeof replyTo[0] === 'string' ? replyTo[0] : (typeof metadata.from === 'string' ? metadata.from : "");
+  const recipients = firstStringList(metadata.recipients || metadata.to || metadata.replyTo);
+  const primaryRecipient = recipients[0] || senderEmail(metadata.from);
   
   const mailboxEmail = typeof metadata.mailboxEmail === 'string' ? metadata.mailboxEmail : "";
   const originalMessageId = typeof metadata.messageId === 'string' ? metadata.messageId : undefined;
+  const itemId = actionItem?.id || originalMessageId || subject;
+  const initialDraftBody = String(metadata.draftBody || metadata.body || "");
+  const approvalId = normalizeApprovalId(metadata.approvalId || metadata.approval_id || "");
+  const [draftState, setDraftState] = useState<{
+    itemId: string;
+    body: string;
+    outlookDraftId: string | null;
+  }>({ itemId: "", body: "", outlookDraftId: null });
+  const body = draftState.itemId === itemId ? draftState.body : initialDraftBody;
+  const outlookDraftId = draftState.itemId === itemId ? draftState.outlookDraftId : null;
+  const autoDraftedItemId = useRef<string | null>(null);
 
   // Initialize draft when opened if metadata exists
   useEffect(() => {
-    if (metadata.bodyPreview && !body && !generateDraft.isPending && !generateDraft.isSuccess) {
+    if (
+      originalMessageId &&
+      metadata.bodyPreview &&
+      !body &&
+      !generateDraft.isPending &&
+      !generateDraft.isSuccess &&
+      autoDraftedItemId.current !== itemId
+    ) {
+      autoDraftedItemId.current = itemId;
       // Auto-generate draft on open
       generateDraft.mutate({
         messageId: originalMessageId || "",
@@ -44,22 +65,27 @@ export function EmailCanvas() {
         userIntent: "Approve and proceed",
       }, {
         onSuccess: (data) => {
-          if (data.draftBody) setBody(data.draftBody);
+          if (data.draftBody) {
+            setDraftState({ itemId, body: data.draftBody, outlookDraftId: null });
+          }
         }
       });
     }
-  }, []);
+  }, [body, generateDraft, itemId, mailboxEmail, metadata.bodyPreview, originalBody, originalMessageId, primaryRecipient, subject]);
 
   const handleSaveDraft = () => {
     createDraft.mutate({
       subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`,
-      draftBody: body,
-      recipients: [primaryRecipient],
+        draftBody: body,
+      recipients: primaryRecipient ? [primaryRecipient] : [],
       mailboxEmail: mailboxEmail,
       originalMessageId: originalMessageId,
+      approvalId: approvalId || null,
     }, {
       onSuccess: (data) => {
-        if (data.outlookDraftId) setOutlookDraftId(data.outlookDraftId);
+        if (data.outlookDraftId) {
+          setDraftState({ itemId, body, outlookDraftId: data.outlookDraftId });
+        }
       }
     });
   };
@@ -73,6 +99,7 @@ export function EmailCanvas() {
 
   const isWorking = generateDraft.isPending || createDraft.isPending || sendDraft.isPending;
   const anyError = generateDraft.error || createDraft.error || sendDraft.error;
+  const missingRecipient = !primaryRecipient;
 
   return (
     <div className="flex h-full bg-background/50 text-foreground">
@@ -117,6 +144,13 @@ export function EmailCanvas() {
             <span>{getFriendlyErrorMessage(anyError)}</span>
           </div>
         )}
+        <CanvasStatusBanner status={metadata.backendStatus} message={metadata.backendError} />
+        {missingRecipient && (
+          <div className="mb-4 text-sm text-amber-400 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 flex gap-2 items-center">
+            <AlertCircle className="h-4 w-4" />
+            <span>Add a recipient before saving this draft to Outlook.</span>
+          </div>
+        )}
         {sendDraft.isSuccess && (
           <div className="mb-4 text-sm text-emerald-400 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 flex gap-2 items-center">
             <span>Email sent successfully.</span>
@@ -143,7 +177,7 @@ export function EmailCanvas() {
           <textarea 
             className="flex-1 w-full bg-transparent p-4 text-sm leading-relaxed resize-none focus:outline-none text-foreground"
             value={generateDraft.isPending ? "Generating draft..." : body}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => setDraftState({ itemId, body: e.target.value, outlookDraftId })}
             disabled={isWorking || sendDraft.isSuccess}
             placeholder="Type your reply here..."
           />
@@ -151,7 +185,7 @@ export function EmailCanvas() {
 
         {/* Actions */}
         <div className="mt-6 flex items-center justify-between">
-          <Button variant="ghost" className="text-muted-foreground hover:text-foreground" disabled={isWorking}>
+          <Button variant="ghost" className="text-muted-foreground hover:text-foreground" disabled={isWorking} onClick={closeCanvas}>
             Discard
           </Button>
           <div className="flex gap-3">
@@ -159,7 +193,7 @@ export function EmailCanvas() {
               variant="outline" 
               className="border-white/10 bg-white/5 hover:bg-white/10"
               onClick={handleSaveDraft}
-              disabled={isWorking || sendDraft.isSuccess || !body}
+              disabled={isWorking || sendDraft.isSuccess || !body || missingRecipient}
             >
               <Save className="mr-2 h-4 w-4" /> 
               {createDraft.isPending ? "Saving..." : "Save as Draft"}
@@ -177,4 +211,30 @@ export function EmailCanvas() {
       </div>
     </div>
   );
+}
+
+function firstStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function senderLabel(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const sender = value as { name?: unknown; email?: unknown };
+    return String(sender.name || sender.email || "");
+  }
+  return "";
+}
+
+function senderEmail(value: unknown): string {
+  if (typeof value === "string" && value.includes("@")) return value;
+  if (value && typeof value === "object") {
+    const sender = value as { email?: unknown; address?: unknown };
+    return String(sender.email || sender.address || "");
+  }
+  return "";
 }

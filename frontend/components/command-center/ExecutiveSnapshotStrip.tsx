@@ -24,7 +24,7 @@ export function ExecutiveSnapshotStrip({ items, counts, activeFilter, onFilter }
     { label: "Unread Email", count: emailCount || 0, icon: Mail, color: "text-blue-400", filter: "email", detail: emailCount > 0 ? "Needs reply" : "Inbox zero", detailColor: emailCount > 0 ? "text-blue-400" : "text-muted-foreground" },
     { label: "Teams Activity", count: teamCount || 0, icon: Users, color: "text-indigo-400", filter: "team", detail: teamCount > 0 ? "New mentions" : "All caught up", detailColor: teamCount > 0 ? "text-indigo-400" : "text-muted-foreground" },
     { label: "Doc Changes", count: docCount || 0, icon: FileText, color: "text-blue-400", filter: "document", detail: docCount > 0 ? "To review" : "Up to date", detailColor: docCount > 0 ? "text-blue-400" : "text-muted-foreground" },
-    { label: "Automations", count: items.filter(i => i.type === "report").length || 0, icon: Zap, color: "text-emerald-400", filter: "report", detail: "Active", detailColor: "text-emerald-400" },
+    { label: "Automations", count: items.filter(i => i.type === "report" || i.type === "automation").length || 0, icon: Zap, color: "text-emerald-400", filter: "report", detail: "Active", detailColor: "text-emerald-400" },
   ];
 
   return (

@@ -1,24 +1,34 @@
 "use client";
 
 import { useCanvas } from "./CanvasContext";
-import { Calendar, Clock, Users, Sparkles, Video, AlertCircle } from "lucide-react";
+import { Calendar, Clock, Users, Video, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CanvasStatusBanner } from "./CanvasStatusBanner";
 
 export function MeetingCanvas() {
-  const { actionItem } = useCanvas();
+  const { actionItem, canvasPayload, closeCanvas } = useCanvas();
 
-  const metadata = (actionItem?.metadata || {}) as Record<string, any>;
-  const person = actionItem?.person || "Unknown Attendee";
-  const title = actionItem?.title || "No Title";
+  const metadata = {
+    ...((actionItem?.metadata || {}) as Record<string, any>),
+    ...((canvasPayload || {}) as Record<string, any>),
+  };
+  const attendees = firstStringList(metadata.attendees || metadata.to);
+  const person = actionItem?.person || attendees[0] || "Unknown Attendee";
+  const title = metadata.subject || metadata.title || actionItem?.title || "No Title";
   
   // Try to format dates from metadata if available
   let displayDate = "No date available";
   let displayTime = "";
   
-  if (metadata.start && metadata.start.dateTime) {
-    const d = new Date(metadata.start.dateTime);
-    displayDate = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    displayTime = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const rawStart = metadata.start?.dateTime || metadata.startTime || metadata.targetStartTime || metadata.newStart;
+  if (rawStart) {
+    const d = new Date(rawStart);
+    if (Number.isNaN(d.getTime())) {
+      displayDate = String(rawStart);
+    } else {
+      displayDate = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      displayTime = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
   }
 
   return (
@@ -61,6 +71,7 @@ export function MeetingCanvas() {
         <h2 className="text-xl font-medium text-foreground mb-6 flex items-center gap-2">
           Meeting Details
         </h2>
+        <CanvasStatusBanner status={metadata.backendStatus} message={metadata.backendError} />
 
         <div className="flex-1 space-y-6 max-w-2xl">
           <div className="space-y-4">
@@ -83,7 +94,7 @@ export function MeetingCanvas() {
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Attendees</label>
                 <div className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm flex items-center gap-2 truncate">
                   <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="truncate">You, {person}</span>
+                  <span className="truncate">{attendees.length ? attendees.join(", ") : `You, ${person}`}</span>
                 </div>
               </div>
             </div>
@@ -102,7 +113,7 @@ export function MeetingCanvas() {
         {/* Actions */}
         <div className="mt-6 flex flex-col gap-2 border-t border-white/10 pt-6">
           <div className="flex items-center justify-between">
-            <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={closeCanvas}>
               Close
             </Button>
             <div className="relative group">
@@ -118,4 +129,12 @@ export function MeetingCanvas() {
       </div>
     </div>
   );
+}
+
+function firstStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
 }

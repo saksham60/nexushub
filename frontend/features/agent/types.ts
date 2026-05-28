@@ -11,17 +11,32 @@ export type AgentRoutingDebug = {
   approvalRequired?: boolean;
 };
 
-export type AgentChatResponse =
-  | { type: "agent_response"; tool_used: string; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> }; routing?: AgentRoutingDebug }
-  | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string }; routing?: AgentRoutingDebug }
-  | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string }; routing?: AgentRoutingDebug }
-  | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string }; routing?: AgentRoutingDebug }
-  | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] }; routing?: AgentRoutingDebug }
-  | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string; routing?: AgentRoutingDebug }
-  | { type: "approval_required"; approval?: ApprovalAction; message: string; draftBody?: string; approvalId?: string | null; toolUsed?: string | null; confidence?: number; routing?: AgentRoutingDebug }
-  | { type: "clarification"; message: string; toolUsed?: string | null; confidence?: number; routing?: AgentRoutingDebug }
-  | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string; routing?: AgentRoutingDebug }
-  | { type: "error"; error: { code: string; message: string }; routing?: AgentRoutingDebug };
+export type AgentExecutionCanvas = {
+  type: "compose_email" | "schedule_meeting" | "document_intelligence" | "approval_review" | "automation";
+  title: string;
+  payload?: Record<string, unknown>;
+};
+
+type AgentResponseMeta = {
+  conversationId?: string;
+  runId?: string;
+  pendingIntentId?: string;
+  executionCanvas?: AgentExecutionCanvas;
+  routing?: AgentRoutingDebug;
+};
+
+export type AgentChatResponse = AgentResponseMeta & (
+  | { type: "agent_response"; tool_used: string; data: { kind: "message"; message: string; tool_count?: number; categories?: Array<{ name: string; tools: string[] }> } }
+  | { type: "agent_response"; tool_used: "mail_find_needs_reply"; data: { kind: "mail_results"; items: MailItem[]; summary?: string } }
+  | { type: "agent_response"; tool_used: "calendar_get_today_agenda"; data: { kind: "calendar_agenda"; items: CalendarEvent[]; summary?: string } }
+  | { type: "agent_response"; tool_used: "docs_list_recent_files"; data: { kind: "recent_files"; items: RecentFile[]; summary?: string } }
+  | { type: "agent_response"; tool_used: "approval_list_pending"; data: { kind: "approvals"; items: ApprovalAction[] } }
+  | { type: "connect_required"; provider: "microsoft"; connect_url: string; message: string }
+  | { type: "approval_required"; approval?: ApprovalAction; message: string; draftBody?: string; approvalId?: string | null; toolUsed?: string | null; confidence?: number }
+  | { type: "clarification"; message: string; toolUsed?: string | null; confidence?: number }
+  | { type: "not_implemented"; module: "teams" | "docs" | "mail" | "calendar"; message: string }
+  | { type: "error"; error: { code: string; message: string } }
+);
 
 export function normalizeAgentResponse(raw: any): AgentChatResponse {
   if (!raw || typeof raw !== "object") {

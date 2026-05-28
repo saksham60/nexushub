@@ -226,6 +226,7 @@ Rules:
 - Tools marked requiresApproval are approval-gated; route them only when the request is explicit.
 - For calendar_reschedule_event, extract sourceTime, targetStartTime, targetEndTime, date, timezone, and meetingTitle when present. Convert obvious times to 24-hour HH:MM when possible.
 - For calendar_schedule_meeting, extract subject, startTime, endTime, attendees, and timezone when present. Use email addresses for attendees when the user provides them.
+- If selectedContext.pendingIntent is present, treat the message as a follow-up answer to the previous clarification. Prefer the previousToolName and merge partialArguments with the followUpMessage.
 - If required details are missing, set requiresClarification true.
 - If no tool fits, set toolName null and requiresClarification true.
 - If the user asks a general capability question, choose no tool and request a direct capability response.

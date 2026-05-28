@@ -1,15 +1,24 @@
 "use client";
 
 import { useCanvas } from "./CanvasContext";
-import { FileText, MessageSquare, Sparkles, AlertCircle, Share2, ExternalLink } from "lucide-react";
+import { AlertCircle, FileText, Sparkles, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CanvasStatusBanner } from "./CanvasStatusBanner";
+import { useAnalyzeDocument } from "@/features/reports/hooks";
+import { getFriendlyErrorMessage } from "@/lib/api/errors";
 
 export function DocumentCanvas() {
-  const { actionItem } = useCanvas();
+  const { actionItem, canvasPayload } = useCanvas();
+  const analyzeDocument = useAnalyzeDocument();
 
-  const metadata = (actionItem?.metadata || {}) as Record<string, any>;
-  const title = actionItem?.title || "Unknown Document";
-  const webUrl = metadata.webUrl as string | undefined;
+  const metadata = {
+    ...((actionItem?.metadata || {}) as Record<string, any>),
+    ...((canvasPayload || {}) as Record<string, any>),
+  };
+  const title = metadata.name || metadata.title || actionItem?.title || "Unknown Document";
+  const webUrl = (metadata.webUrl || metadata.web_url) as string | undefined;
+  const documentId = String(metadata.documentId || metadata.document_id || metadata.id || "");
+  const analysis = analyzeDocument.data;
 
   return (
     <div className="flex h-full bg-background/50 text-foreground">
@@ -57,33 +66,90 @@ export function DocumentCanvas() {
         <h2 className="text-xl font-medium text-foreground mb-6 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" /> Document Intelligence
         </h2>
+        <CanvasStatusBanner status={metadata.backendStatus} message={metadata.backendError} />
+        {analyzeDocument.error && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{getFriendlyErrorMessage(analyzeDocument.error)}</span>
+          </div>
+        )}
 
         <div className="space-y-6">
           {/* AI Summary */}
           <section>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Summary</h3>
             <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
-              {actionItem?.description || "No detailed summary available for this document."}
+              {analysis?.summary || metadata.summary || actionItem?.description || "No detailed summary available for this document."}
             </div>
           </section>
+          {analysis && hasAnalysisDetails(analysis) && (
+            <section className="grid gap-4 md:grid-cols-3">
+              <InsightList title="Key Points" items={analysis.keyPoints} />
+              <InsightList title="Risks" items={analysis.risks} />
+              <InsightList title="Actions" items={analysis.actionItems} />
+            </section>
+          )}
         </div>
 
         {/* Action Input */}
         <div className="mt-auto pt-6">
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Ask a question about this document..." 
-              className="w-full bg-white/5 border border-white/10 rounded-full py-3 px-4 text-sm text-muted-foreground focus:outline-none transition-all"
-              disabled
-            />
-            <Button disabled size="icon" className="absolute right-1 top-1 h-8 w-8 rounded-full bg-primary/20 text-primary">
-              <Sparkles className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">Interactive Q&A is coming soon.</p>
+          <Button
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            disabled={!documentId || analyzeDocument.isPending}
+            onClick={() =>
+              analyzeDocument.mutate({
+                documentId,
+                analysisType: "executive_brief",
+                instructions: String(metadata.analysisGoal || metadata.prompt || ""),
+              })
+            }
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {analyzeDocument.isPending ? "Generating brief..." : "Generate Backend Brief"}
+          </Button>
+          {!documentId && (
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Backend analysis needs an uploaded document id. Connected OneDrive previews can still be reviewed here.
+            </p>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function hasAnalysisDetails(
+  analysis:
+    | {
+        keyPoints?: string[];
+        risks?: string[];
+        actionItems?: string[];
+      }
+    | undefined,
+) {
+  return Boolean(
+    analysis?.keyPoints?.length ||
+      analysis?.risks?.length ||
+      analysis?.actionItems?.length,
+  );
+}
+
+function InsightList({ title, items }: { title: string; items?: string[] }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      {items?.length ? (
+        <ul className="space-y-2 text-xs leading-5 text-muted-foreground">
+          {items.slice(0, 5).map((item) => (
+            <li key={item} className="flex gap-2">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">No items returned.</p>
+      )}
     </div>
   );
 }

@@ -43,6 +43,8 @@ class AgentChatRequest(BaseModel):
     user_id: str
     workspace_id: str | None = None
     message: str
+    conversation_id: str | None = None
+    selected_context: dict[str, Any] | None = None
 
 
 class MailDraftPreviewRequest(UserWorkspaceRequest):

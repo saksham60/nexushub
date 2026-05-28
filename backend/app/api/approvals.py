@@ -5,10 +5,12 @@ from fastapi import APIRouter, HTTPException, Query
 from app.core.errors import (
     AuthenticationRequiredError,
     ConsentRequiredError,
+    ForbiddenError,
     GraphServiceError,
     NexusHubError,
+    NotFoundError,
 )
-from app.services.approval_service import ApprovalService
+from app.services.approval_service import ApprovalService, normalize_approval_id
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -17,8 +19,10 @@ def _http_error(exc: NexusHubError) -> HTTPException:
     status_code = 400
     if isinstance(exc, AuthenticationRequiredError):
         status_code = 401
-    elif isinstance(exc, ConsentRequiredError):
+    elif isinstance(exc, (ConsentRequiredError, ForbiddenError)):
         status_code = 403
+    elif isinstance(exc, NotFoundError):
+        status_code = 404
     elif isinstance(exc, GraphServiceError):
         status_code = 502
     return HTTPException(
@@ -41,6 +45,7 @@ async def list_pending(
 @router.post("/{approval_id}/approve")
 async def approve(approval_id: str, user_id: str = Query(...)) -> dict[str, object]:
     try:
+        approval_id = normalize_approval_id(approval_id)
         return await ApprovalService().execute_approval(
             user_id=user_id, approval_id=approval_id, approved=True
         )
@@ -51,6 +56,7 @@ async def approve(approval_id: str, user_id: str = Query(...)) -> dict[str, obje
 @router.post("/{approval_id}/reject")
 async def reject(approval_id: str, user_id: str = Query(...)) -> dict[str, object]:
     try:
+        approval_id = normalize_approval_id(approval_id)
         return await ApprovalService().execute_approval(
             user_id=user_id, approval_id=approval_id, approved=False
         )

@@ -1,4 +1,4 @@
-export type ActionItemType = "email" | "calendar" | "document" | "approval" | "team" | "report";
+export type ActionItemType = "email" | "calendar" | "document" | "approval" | "team" | "report" | "automation";
 
 export type ActionItem = {
   id: string;

@@ -4,7 +4,7 @@ import { useUIStore } from "@/lib/store/uiStore";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Home, Star, MessageSquare, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronDown, Settings } from "lucide-react";
+import { Home, Inbox, Calendar, FileText, Scale, Zap, ChevronLeft, ChevronRight, ChevronDown, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./MobileNav";
 import { Sparkles } from "lucide-react";
@@ -12,13 +12,12 @@ import { useSession } from "@/features/session/hooks";
 import { useMicrosoftStatus } from "@/features/auth/hooks";
 
 const navItems = [
-  { name: "Home", href: "/command-center", icon: Home },
-  { name: "Priorities", href: "/command-center?filter=all", icon: Star },
-  { name: "Communications", href: "/command-center?filter=email", icon: MessageSquare },
-  { name: "Calendar", href: "/command-center?filter=calendar", icon: Calendar },
-  { name: "Documents", href: "/command-center?filter=document", icon: FileText },
-  { name: "Decisions", href: "/command-center?filter=approval", icon: Scale },
-  { name: "Automations", href: "/command-center?filter=report", icon: Zap },
+  { name: "Command Center", href: "/command-center", icon: Home },
+  { name: "Mail", href: "/mail", icon: Inbox },
+  { name: "Meetings", href: "/meetings", icon: Calendar },
+  { name: "Doc Intelligence", href: "/doc-intelligence", icon: FileText },
+  { name: "Approvals", href: "/approvals", icon: Scale },
+  { name: "Automations", href: "/automations", icon: Zap },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -48,7 +47,7 @@ export function Sidebar() {
           sidebarCollapsed ? "w-16" : "w-64"
         )}
       >
-        <div className="flex h-20 items-center justify-between px-5">
+        <div className={cn("flex h-20 items-center justify-between", sidebarCollapsed ? "px-2" : "px-5")}>
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-primary" />
@@ -58,8 +57,17 @@ export function Sidebar() {
             </div>
           )}
           {sidebarCollapsed && (
-            <div className="w-full flex justify-center">
+            <div className="flex w-full items-center justify-between gap-1">
               <Sparkles className="h-6 w-6 text-primary" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarCollapsed(false)}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                aria-label="Expand sidebar"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           )}
           {!sidebarCollapsed && (

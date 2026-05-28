@@ -29,9 +29,9 @@ export function useActionQueue(initialFilter: string = "all") {
   }, [items, activeFilter]);
 
   const selectedItemFromQueue = selectedItem
-    ? items.find((item) => item.id === selectedItem.id)
+    ? filteredItems.find((item) => item.id === selectedItem.id)
     : null;
-  const defaultSelectedItem = items.find((item) => item.priority === "high") || items[0] || null;
+  const defaultSelectedItem = filteredItems.find((item) => item.priority === "high") || filteredItems[0] || null;
   const activeSelectedItem = selectedItemFromQueue || defaultSelectedItem;
   const sourceError = feedQuery.data?.errors ? Object.values(feedQuery.data.errors)[0] : null;
 

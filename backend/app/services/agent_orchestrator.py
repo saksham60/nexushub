@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
+
+from langsmith import traceable
 
 from app.core.errors import (
     AuthenticationRequiredError,
@@ -10,110 +13,189 @@ from app.core.errors import (
     NexusHubError,
 )
 from app.core.logging import get_logger
-from app.services.agent_capabilities import (
-    build_direct_response,
-)
+from app.services.agent_capabilities import build_direct_response
+from app.services.agent_memory import AgentConversationMemory, PendingAgentIntent
 from app.services.calendar_reschedule_service import CalendarRescheduleService
 from app.services.mcp_client import call_tool
-from app.services.semantic_agent_router import SemanticAgentRouter
+from app.services.semantic_agent_router import SemanticAgentRouter, SemanticRoutingDecision
 
 logger = get_logger(__name__)
 
 
 class AgentOrchestrator:
+    @traceable(run_type="chain")
     async def chat(
-        self, *, user_id: str, workspace_id: str | None, message: str
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        message: str,
+        conversation_id: str | None = None,
+        selected_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        memory = AgentConversationMemory()
+        active_conversation_id = memory.ensure_conversation_id(conversation_id)
+        pending = memory.get_pending(
+            conversation_id=active_conversation_id,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
+
+        routing_message = message
+        routing_context = dict(selected_context or {})
+        if pending:
+            routing_context["pendingIntent"] = pending.to_context(message)
+            routing_message = _follow_up_message(message=message, pending=pending)
+
+        response, decision = await self._chat_once(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            message=routing_message,
+            selected_context=routing_context,
+        )
+
+        if response.get("type") == "clarification":
+            saved = memory.save_pending(
+                conversation_id=active_conversation_id,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                original_message=pending.original_message if pending else message,
+                tool_name=(decision.tool_name if decision else response.get("toolUsed")),
+                arguments=(decision.arguments if decision else None)
+                or (pending.arguments if pending else {}),
+                clarification_question=str(response.get("message") or ""),
+            )
+            response["pendingIntentId"] = saved.intent_id
+        else:
+            memory.clear_pending(conversation_id=active_conversation_id)
+
+        response["conversationId"] = active_conversation_id
+        response["runId"] = str(uuid4())
+        canvas = _execution_canvas_for_response(response)
+        if canvas:
+            response["executionCanvas"] = canvas
+        return response
+
+    async def _chat_once(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None,
+        message: str,
+        selected_context: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], SemanticRoutingDecision | None]:
         decision = await SemanticAgentRouter().route(
-            user_id=user_id, workspace_id=workspace_id, message=message
+            user_id=user_id,
+            workspace_id=workspace_id,
+            message=message,
+            selected_context=selected_context,
         )
         if decision.response_type == "direct_response":
             direct_data = await build_direct_response(message)
-            return {
-                "type": "agent_response",
-                "tool_used": "direct_response",
-                "data": {
-                    "ok": True,
-                    "source": "agent",
-                    "data": direct_data,
+            return (
+                {
+                    "type": "agent_response",
+                    "tool_used": "direct_response",
+                    "data": {
+                        "ok": True,
+                        "source": "agent",
+                        "data": direct_data,
+                    },
+                    "agent": {
+                        "mode": "semantic",
+                        "routing_source": "direct_catalog_response",
+                        "reason": decision.reason,
+                        "confidence": decision.confidence,
+                    },
+                    "routing": _routing_debug(
+                        selected_tool="direct_response",
+                        decision=decision,
+                        clarification_needed=False,
+                        approval_required=False,
+                    ),
                 },
-                "agent": {
-                    "mode": "semantic",
-                    "routing_source": "direct_catalog_response",
-                    "reason": decision.reason,
-                    "confidence": decision.confidence,
-                },
-                "routing": _routing_debug(
-                    selected_tool="direct_response",
-                    decision=decision,
-                    clarification_needed=False,
-                    approval_required=False,
-                ),
-            }
+                decision,
+            )
         if decision.response_type == "clarification":
-            return {
-                "type": "clarification",
-                "message": decision.clarification_question
-                or "Please clarify what you want NexusHub to do.",
-                "toolUsed": decision.tool_name,
-                "confidence": decision.confidence,
-                "agent": {
-                    "mode": "semantic",
-                    "routing_source": "openai_semantic_router",
-                    "reason": decision.reason,
+            return (
+                {
+                    "type": "clarification",
+                    "message": decision.clarification_question
+                    or "Please clarify what you want NexusHub to do.",
+                    "toolUsed": decision.tool_name,
+                    "confidence": decision.confidence,
+                    "agent": {
+                        "mode": "semantic",
+                        "routing_source": "openai_semantic_router",
+                        "reason": decision.reason,
+                    },
+                    "routing": _routing_debug(
+                        selected_tool=decision.tool_name,
+                        decision=decision,
+                        clarification_needed=True,
+                        approval_required=decision.requires_approval,
+                    ),
                 },
-                "routing": _routing_debug(
-                    selected_tool=decision.tool_name,
-                    decision=decision,
-                    clarification_needed=True,
-                    approval_required=decision.requires_approval,
-                ),
-            }
+                decision,
+            )
         if decision.response_type == "error":
-            return {
-                "type": "error",
-                "error": {
-                    "code": decision.error_code or "ROUTER_ERROR",
-                    "message": decision.error_message or "NexusHub could not route the command.",
+            return (
+                {
+                    "type": "error",
+                    "error": {
+                        "code": decision.error_code or "ROUTER_ERROR",
+                        "message": decision.error_message
+                        or "NexusHub could not route the command.",
+                    },
+                    "agent": {
+                        "mode": "semantic",
+                        "routing_source": "openai_semantic_router",
+                        "reason": decision.reason,
+                    },
+                    "routing": _routing_debug(
+                        selected_tool=decision.tool_name,
+                        decision=decision,
+                        clarification_needed=False,
+                        approval_required=decision.requires_approval,
+                    ),
                 },
-                "agent": {
-                    "mode": "semantic",
-                    "routing_source": "openai_semantic_router",
-                    "reason": decision.reason,
-                },
-                "routing": _routing_debug(
-                    selected_tool=decision.tool_name,
-                    decision=decision,
-                    clarification_needed=False,
-                    approval_required=decision.requires_approval,
-                ),
-            }
+                decision,
+            )
 
         tool_name = decision.tool_name
         if not tool_name:
-            return {
-                "type": "clarification",
-                "message": "I could not match that request to an available NexusHub tool.",
-                "confidence": decision.confidence,
-                "routing": _routing_debug(
-                    selected_tool=None,
-                    decision=decision,
-                    clarification_needed=True,
-                    approval_required=False,
-                ),
-            }
+            return (
+                {
+                    "type": "clarification",
+                    "message": "I could not match that request to an available NexusHub tool.",
+                    "confidence": decision.confidence,
+                    "routing": _routing_debug(
+                        selected_tool=None,
+                        decision=decision,
+                        clarification_needed=True,
+                        approval_required=False,
+                    ),
+                },
+                decision,
+            )
         if decision.requires_approval and tool_name != "approval_execute":
             if tool_name == "calendar_reschedule_event":
-                return await self._prepare_calendar_reschedule(
+                return (
+                    await self._prepare_calendar_reschedule(
+                        user_id=user_id,
+                        workspace_id=workspace_id,
+                        message=message,
+                        decision=decision,
+                    ),
+                    decision,
+                )
+            return (
+                await self._prepare_mcp_approval(
                     user_id=user_id,
                     workspace_id=workspace_id,
-                    message=message,
                     decision=decision,
-                )
-            return await self._prepare_mcp_approval(
-                user_id=user_id,
-                workspace_id=workspace_id,
-                decision=decision,
+                ),
+                decision,
             )
 
         arguments = {
@@ -127,42 +209,48 @@ class AgentOrchestrator:
             isinstance(tool_result, dict)
             and tool_result.get("status") == "authentication_required"
         ):
-            return {
-                "type": "connect_required",
-                "provider": "microsoft",
-                "connect_url": "/auth/microsoft/start",
-                "message": "Please connect Microsoft 365 first.",
+            return (
+                {
+                    "type": "connect_required",
+                    "provider": "microsoft",
+                    "connect_url": "/auth/microsoft/start",
+                    "message": "Please connect Microsoft 365 first.",
+                    "routing": _routing_debug(
+                        selected_tool=tool_name,
+                        decision=decision,
+                        clarification_needed=False,
+                        approval_required=False,
+                    ),
+                },
+                decision,
+            )
+        return (
+            {
+                "type": "agent_response",
+                "tool_used": tool_name,
+                "data": tool_result,
+                "agent": {
+                    "mode": "semantic",
+                    "routing_source": "openai_semantic_router",
+                    "reason": decision.reason,
+                    "confidence": decision.confidence,
+                },
                 "routing": _routing_debug(
                     selected_tool=tool_name,
                     decision=decision,
                     clarification_needed=False,
                     approval_required=False,
                 ),
-            }
-        return {
-            "type": "agent_response",
-            "tool_used": tool_name,
-            "data": tool_result,
-            "agent": {
-                "mode": "semantic",
-                "routing_source": "openai_semantic_router",
-                "reason": decision.reason,
-                "confidence": decision.confidence,
             },
-            "routing": _routing_debug(
-                selected_tool=tool_name,
-                decision=decision,
-                clarification_needed=False,
-                approval_required=False,
-            ),
-        }
+            decision,
+        )
 
     async def _prepare_mcp_approval(
         self,
         *,
         user_id: str,
         workspace_id: str | None,
-        decision: Any,
+        decision: SemanticRoutingDecision,
     ) -> dict[str, Any]:
         tool_name = decision.tool_name
         if not tool_name:
@@ -280,7 +368,7 @@ class AgentOrchestrator:
         user_id: str,
         workspace_id: str | None,
         message: str,
-        decision: Any,
+        decision: SemanticRoutingDecision,
     ) -> dict[str, Any]:
         try:
             prepared = await CalendarRescheduleService().prepare_approval(
@@ -359,10 +447,37 @@ class AgentOrchestrator:
         }
 
 
+def _follow_up_message(*, message: str, pending: PendingAgentIntent) -> str:
+    return (
+        "Continue the pending NexusHub task using the user's follow-up answer.\n"
+        f"Original request: {pending.original_message}\n"
+        f"Previous tool: {pending.tool_name or 'unknown'}\n"
+        f"Partial arguments: {pending.arguments}\n"
+        f"Clarification question: {pending.clarification_question or ''}\n"
+        f"User follow-up answer: {message}"
+    )
+
+
+def _execution_canvas_for_response(response: dict[str, Any]) -> dict[str, Any] | None:
+    tool_name = str(response.get("toolUsed") or response.get("tool_used") or "")
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    title = str(response.get("message") or data.get("title") or "Review action")
+
+    if tool_name.startswith("mail_"):
+        return {"type": "compose_email", "title": title, "payload": data}
+    if tool_name.startswith("calendar_"):
+        return {"type": "schedule_meeting", "title": title, "payload": data}
+    if tool_name.startswith("docs_"):
+        return {"type": "document_intelligence", "title": title, "payload": data}
+    if tool_name.startswith("approval_") or response.get("approvalId"):
+        return {"type": "approval_review", "title": title, "payload": data}
+    return None
+
+
 def _routing_debug(
     *,
     selected_tool: str | None,
-    decision: Any,
+    decision: SemanticRoutingDecision,
     clarification_needed: bool,
     approval_required: bool,
 ) -> dict[str, Any]:
@@ -375,7 +490,7 @@ def _routing_debug(
     }
 
 
-def _agent_error(*, decision: Any, code: str, message: str) -> dict[str, Any]:
+def _agent_error(*, decision: SemanticRoutingDecision, code: str, message: str) -> dict[str, Any]:
     return {
         "type": "error",
         "error": {"code": code, "message": message},

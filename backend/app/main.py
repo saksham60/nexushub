@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     agent,
+    automations,
     approvals,
     auth_microsoft,
     command_center,
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth_microsoft.router)
 app.include_router(agent.router)
+app.include_router(automations.router)
 app.include_router(command_center.router)
 app.include_router(documents.router)
 app.include_router(documents.internal_router)

@@ -3,7 +3,8 @@
 import { ActionItem } from "@/features/command-center/types";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Scale, Check, X, AlertCircle } from "lucide-react";
-import { useApproveAction } from "@/features/approvals/hooks";
+import { useApproveAction, useRejectAction } from "@/features/approvals/hooks";
+import { normalizeApprovalId } from "@/features/approvals/ids";
 import { getFriendlyErrorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/features/canvas/CanvasContext";
@@ -15,6 +16,7 @@ interface DecisionPanelProps {
 export function DecisionPanel({ item }: DecisionPanelProps) {
   const { openCanvas } = useCanvas();
   const approveAction = useApproveAction();
+  const rejectAction = useRejectAction();
 
   if (!item) {
     return (
@@ -31,21 +33,18 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
   }
 
   const isApproval = item.type === "approval";
-  const approvalId = (item.metadata?.approval_id || item.id) as string;
+  const approvalId = normalizeApprovalId(item.metadata?.id || item.metadata?.approval_id || item.id);
 
   const handleApprove = async () => {
     try {
       await approveAction.mutateAsync(approvalId);
-    } catch (e) {
+    } catch {
       // Error is handled by global query hooks, but could show local state
     }
   };
 
   const handleReject = async () => {
-    // Reusing the same mutation if it supports reject, otherwise mock it for now.
-    // Assuming we have a reject or just ignoring for this hackathon MVP if backend lacks it.
-    // For now, we just log or do nothing if reject isn't fully implemented in hooks.
-    console.log("Rejecting", approvalId);
+    await rejectAction.mutateAsync(approvalId);
   };
 
   return (
@@ -67,10 +66,10 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5 scrollbar-none space-y-4">
-        {approveAction.isError && (
+        {(approveAction.isError || rejectAction.isError) && (
           <div className="text-sm text-red-400 bg-red-500/10 p-3 rounded-xl border border-red-500/20 flex gap-2 items-center">
             <AlertCircle className="h-4 w-4" />
-            <span>{getFriendlyErrorMessage(approveAction.error)}</span>
+            <span>{getFriendlyErrorMessage(approveAction.error || rejectAction.error)}</span>
           </div>
         )}
         
@@ -84,18 +83,26 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
         </section>
 
         {isApproval ? (
-          <div className="grid grid-cols-2 gap-3 pt-4">
+          <div className="grid grid-cols-1 gap-3 pt-4 sm:grid-cols-3">
+            <Button
+              variant="outline"
+              disabled={approveAction.isPending || rejectAction.isPending}
+              className="bg-white/5 border-white/10 text-foreground hover:bg-white/10"
+              onClick={() => openCanvas("approval", item, item.metadata || {})}
+            >
+              Review
+            </Button>
             <Button 
               variant="outline"
-              disabled={approveAction.isPending}
+              disabled={approveAction.isPending || rejectAction.isPending}
               className="bg-transparent border-white/10 text-muted-foreground hover:text-white"
               onClick={handleReject}
             >
               <X className="mr-2 h-4 w-4" />
-              Reject
+              {rejectAction.isPending ? "Rejecting..." : "Reject"}
             </Button>
             <Button 
-              disabled={approveAction.isPending}
+              disabled={approveAction.isPending || rejectAction.isPending}
               className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-600/30"
               onClick={handleApprove}
             >
@@ -111,6 +118,7 @@ export function DecisionPanel({ item }: DecisionPanelProps) {
                 if (item.type === "email") openCanvas("email", item);
                 else if (item.type === "calendar") openCanvas("meeting", item);
                 else if (item.type === "document") openCanvas("document", item);
+                else if (item.type === "report" || item.type === "automation") openCanvas("automation", item, item.metadata || {});
               }}
             >
               <Scale className="mr-2 h-5 w-5" />

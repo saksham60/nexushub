@@ -4,6 +4,7 @@ import { endpoints } from "@/lib/api/endpoints";
 import { normalizeAgentResponse } from "./types";
 import { queryKeys } from "@/lib/query/queryKeys";
 import { getRequestIdentity } from "@/lib/session/localUser";
+import { getAgentConversationId, rememberAgentConversationId } from "./conversation";
 
 export function useSendAgentMessage() {
   const queryClient = useQueryClient();
@@ -13,8 +14,23 @@ export function useSendAgentMessage() {
       const raw = await apiClient.post(endpoints.agentChat, {
         ...getRequestIdentity(),
         message: payload.message,
+        conversation_id: getAgentConversationId(),
       });
-      return normalizeAgentResponse(raw);
+      const normalized = normalizeAgentResponse(raw);
+      const conversationId =
+        typeof (raw as any)?.conversationId === "string" ? (raw as any).conversationId : undefined;
+      rememberAgentConversationId(conversationId);
+      return {
+        ...normalized,
+        conversationId,
+        runId: typeof (raw as any)?.runId === "string" ? (raw as any).runId : undefined,
+        pendingIntentId:
+          typeof (raw as any)?.pendingIntentId === "string" ? (raw as any).pendingIntentId : undefined,
+        executionCanvas:
+          (raw as any)?.executionCanvas && typeof (raw as any).executionCanvas === "object"
+            ? (raw as any).executionCanvas
+            : undefined,
+      };
     },
     onSuccess: (data) => {
       if (data.type === "approval_required") {

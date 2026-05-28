@@ -3,12 +3,19 @@
 import { Sidebar } from "./Sidebar";
 import { ExecutiveTopRail } from "../command-center/ExecutiveTopRail";
 import { ExecutionCanvasContainer } from "@/features/canvas/ExecutionCanvasContainer";
+import { useUIStore } from "@/lib/store/uiStore";
+import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
+
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground overflow-hidden">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden pl-0 md:pl-64 transition-all duration-300">
+      <div className={cn(
+        "flex flex-1 flex-col overflow-hidden pl-0 transition-all duration-300",
+        sidebarCollapsed ? "md:pl-16" : "md:pl-64",
+      )}>
         <ExecutiveTopRail />
         <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 relative">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-background to-background -z-10 pointer-events-none" />

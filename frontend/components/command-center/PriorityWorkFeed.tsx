@@ -6,7 +6,6 @@ import {
   CheckSquare,
   FileText,
   Mail,
-  MessageSquare,
   Star,
   Users,
   ChevronRight,
@@ -25,7 +24,6 @@ interface PriorityWorkFeedProps {
 
 export function PriorityWorkFeed({
   items,
-  activeFilter,
   selectedItem,
   setSelectedItem,
   isLoading,

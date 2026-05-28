@@ -14,6 +14,7 @@ export const endpoints = {
   documentAnalyze: "/api/documents/analyze",
   documentReports: "/api/documents/reports",
   approvals: "/approvals",
-  approvalApprove: (approvalId: string) => `/approvals/${approvalId}/approve`,
-  approvalReject: (approvalId: string) => `/approvals/${approvalId}/reject`,
+  approvalApprove: (approvalId: string) => `/approvals/${encodeURIComponent(approvalId)}/approve`,
+  approvalReject: (approvalId: string) => `/approvals/${encodeURIComponent(approvalId)}/reject`,
+  automations: "/api/automations",
 };

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 from app.core.errors import (
     AuthenticationRequiredError,
@@ -14,6 +15,21 @@ from app.core.errors import (
 from app.db.supabase_client import get_supabase
 from app.services.microsoft_connection_service import MicrosoftConnectionService
 from app.services.microsoft_graph_service import MicrosoftGraphService
+
+APPROVAL_ID_PREFIXES = ("app_", "approval_", "approval:")
+
+
+def normalize_approval_id(approval_id: str) -> str:
+    raw_approval_id = str(approval_id or "").strip()
+    for prefix in APPROVAL_ID_PREFIXES:
+        if raw_approval_id.lower().startswith(prefix):
+            raw_approval_id = raw_approval_id[len(prefix) :]
+            break
+
+    try:
+        return str(UUID(raw_approval_id))
+    except ValueError as exc:
+        raise NotFoundError("Approval was not found.") from exc
 
 
 class ApprovalService:
@@ -72,6 +88,7 @@ class ApprovalService:
         draft_override: dict[str, Any] | None = None,
         simulate: bool = False,
     ) -> dict[str, Any]:
+        approval_id = normalize_approval_id(approval_id)
         approval = self._get_for_user(user_id=user_id, approval_id=approval_id)
         if approval.get("status") != "pending":
             return approval
@@ -608,6 +625,7 @@ class ApprovalService:
         }
 
     def _get_for_user(self, *, user_id: str, approval_id: str) -> dict[str, Any]:
+        approval_id = normalize_approval_id(approval_id)
         response = (
             get_supabase()
             .table("approval_actions")

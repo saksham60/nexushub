@@ -8,6 +8,8 @@ import { DecisionPanel } from "@/components/command-center/DecisionPanel";
 import { AlertCircle, Sparkles, Send } from "lucide-react";
 import { AgentChatResponse } from "@/features/agent/types";
 import { useSendAgentMessage } from "@/features/agent/hooks";
+import { clearAgentConversationId } from "@/features/agent/conversation";
+import { canvasRequestFromAgentResponse, inferCanvasFromPrompt } from "@/features/agent/executionCanvas";
 import { AgentResponsePanel } from "@/components/agent/AgentResponsePanel";
 import { useConnectMicrosoft, useMicrosoftStatus } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { useSession } from "@/features/session/hooks";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { useCanvas } from "@/features/canvas/CanvasContext";
+import { getFriendlyErrorMessage } from "@/lib/api/errors";
 
 export default function CommandCenterPage() {
   const [agentResponse, setAgentResponse] = useState<AgentChatResponse | null>(null);
@@ -26,6 +30,7 @@ export default function CommandCenterPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const { openCanvas } = useCanvas();
   
   let userName: string | null = null;
   if (microsoftStatus?.connected && microsoftStatus.display_name && !microsoftStatus.display_name.includes("NexusHub")) {
@@ -74,11 +79,31 @@ export default function CommandCenterPage() {
   });
 
   const runPrompt = async (text: string) => {
-    if (!text.trim()) return;
-    const response = await sendAgentMessage.mutateAsync({ message: text });
-    setAgentResponse(response);
-    setPromptInput("");
-    return response;
+    const prompt = text.trim();
+    if (!prompt) return;
+    const inferredCanvas = inferCanvasFromPrompt(prompt, { backendStatus: "preparing" });
+    if (inferredCanvas) {
+      openCanvas(inferredCanvas.type, inferredCanvas.item, inferredCanvas.payload);
+    }
+    try {
+      const response = await sendAgentMessage.mutateAsync({ message: prompt });
+      setAgentResponse(response);
+      const responseCanvas = canvasRequestFromAgentResponse(response, prompt);
+      if (responseCanvas) {
+        openCanvas(responseCanvas.type, responseCanvas.item, responseCanvas.payload);
+      }
+      setPromptInput("");
+      return response;
+    } catch (error) {
+      const fallbackCanvas = inferCanvasFromPrompt(prompt, {
+        backendStatus: "error",
+        backendError: getFriendlyErrorMessage(error),
+      });
+      if (fallbackCanvas) {
+        openCanvas(fallbackCanvas.type, fallbackCanvas.item, fallbackCanvas.payload);
+      }
+      return undefined;
+    }
   };
 
   return (
@@ -129,7 +154,7 @@ export default function CommandCenterPage() {
           />
           <div className="flex items-center gap-2 pr-2">
             <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-white/5 border border-white/10 text-muted-foreground text-xs font-mono">
-              <span>⌘</span><span>K</span>
+              <span>Ctrl</span><span>K</span>
             </div>
             <Button disabled={sendAgentMessage.isPending} size="icon" className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(139,92,246,0.5)]" onClick={() => runPrompt(promptInput)}>
               <Send className="h-4 w-4 ml-0.5" />
@@ -144,6 +169,21 @@ export default function CommandCenterPage() {
               error={sendAgentMessage.error}
               onConnect={() => connectMicrosoft()}
             />
+            {agentResponse?.conversationId && (
+              <div className="mt-2 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => {
+                    clearAgentConversationId();
+                    setAgentResponse(null);
+                  }}
+                >
+                  New task
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>
