@@ -4,26 +4,31 @@ import React, { useState, useEffect } from "react";
 import { KnowledgeGraphResponse } from "../types";
 import { Network, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useSession } from "@/features/session/hooks";
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
 
 export function KnowledgeGraphWidget() {
+  const { data: session } = useSession();
   const [data, setData] = useState<KnowledgeGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!session || session.status !== "ok") return;
       try {
-        const response = await fetch("/api/knowledge-graph?user_id=default_user&workspace_id=default_workspace&limit=10");
-        if (response.ok) {
-          setData(await response.json());
-        }
+        const json = await apiClient.get<KnowledgeGraphResponse>(`${endpoints.knowledgeGraph}?user_id=${session.user.id}&workspace_id=${session.workspace.id}&limit=10`);
+        setData(json);
       } catch (err) {
         console.error("Failed to load widget graph data", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, []);
+    if (session && session.status === "ok") {
+      fetchData();
+    }
+  }, [session]);
 
   return (
     <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 flex flex-col h-full relative overflow-hidden group hover:border-white/10 transition-all">

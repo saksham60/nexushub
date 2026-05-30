@@ -17,4 +17,5 @@ export const endpoints = {
   approvalApprove: (approvalId: string) => `/approvals/${encodeURIComponent(approvalId)}/approve`,
   approvalReject: (approvalId: string) => `/approvals/${encodeURIComponent(approvalId)}/reject`,
   automations: "/api/automations",
+  knowledgeGraph: "/api/knowledge-graph",
 };

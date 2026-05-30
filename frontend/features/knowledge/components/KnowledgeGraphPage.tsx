@@ -6,8 +6,12 @@ import { KnowledgeGraphViewer } from "./KnowledgeGraphViewer";
 import { KnowledgeEntityDrawer } from "./KnowledgeEntityDrawer";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "@/features/session/hooks";
+import { apiClient } from "@/lib/api/client";
+import { endpoints } from "@/lib/api/endpoints";
 
 export function KnowledgeGraphPage() {
+  const { data: session } = useSession();
   const [data, setData] = useState<KnowledgeGraphResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,12 +19,11 @@ export function KnowledgeGraphPage() {
   const searchParams = useSearchParams();
 
   const fetchData = async () => {
+    if (!session || session.status !== "ok") return;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/knowledge-graph?user_id=default_user&workspace_id=default_workspace");
-      if (!response.ok) throw new Error("Failed to fetch graph data");
-      const json = await response.json();
+      const json = await apiClient.get<KnowledgeGraphResponse>(`${endpoints.knowledgeGraph}?user_id=${session.user.id}&workspace_id=${session.workspace.id}`);
       setData(json);
     } catch (err: any) {
       setError(err.message);
@@ -30,8 +33,10 @@ export function KnowledgeGraphPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (session && session.status === "ok") {
+      fetchData();
+    }
+  }, [session]);
 
   const handleAction = (action: any) => {
     // Open the execution canvas via URL or context
