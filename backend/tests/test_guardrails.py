@@ -4,8 +4,11 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 from app.config import Settings
 from app.core.errors import (
@@ -16,6 +19,7 @@ from app.core.errors import (
 )
 from app.services.document_service import DocumentService
 from app.services.semantic_agent_router import SemanticAgentRouter
+from app.services.tool_catalog_service import ToolCatalogService
 
 
 class SuccessfulLLM:
@@ -77,6 +81,29 @@ class ToolCatalog:
             ],
             "count": 1,
             "categories": ["mail"],
+        }
+
+
+class CalendarCatalog:
+    async def get_catalog(self) -> dict[str, Any]:
+        return {
+            "tools": [
+                {
+                    "name": "calendar_schedule_meeting",
+                    "category": "calendar",
+                    "description": "Prepare an approval-gated Outlook meeting invite.",
+                    "inputSchema": {
+                        "subject": "string",
+                        "startTime": "ISO datetime or natural time",
+                        "endTime": "ISO datetime or natural time",
+                        "attendees": "string[]",
+                        "timezone": "IANA timezone",
+                    },
+                    "requiresApproval": True,
+                }
+            ],
+            "count": 1,
+            "categories": ["calendar"],
         }
 
 
@@ -205,6 +232,43 @@ class SemanticRouterGuardrailTests(unittest.IsolatedAsyncioTestCase):
         ).route(user_id="u", workspace_id=None, message="Find emails I need to answer")
         self.assertEqual(decision.response_type, "error")
         self.assertEqual(decision.error_code, "FEATURE_DISABLED")
+
+    async def test_schedule_prompt_uses_deterministic_route_without_llm(self) -> None:
+        decision = await SemanticAgentRouter(
+            llm=FailingLLM(),
+            catalog_service=CalendarCatalog(),
+        ).route(
+            user_id="u",
+            workspace_id=None,
+            message="setup a meeting with sakshamshady@gmail.com at 9 pm ist tomorrow",
+        )
+
+        self.assertEqual(decision.response_type, "tool")
+        self.assertEqual(decision.tool_name, "calendar_schedule_meeting")
+        self.assertTrue(decision.requires_approval)
+        args = decision.arguments or {}
+        self.assertEqual(args["attendees"], ["sakshamshady@gmail.com"])
+        self.assertEqual(args["subject"], "Meeting with sakshamshady@gmail.com")
+        self.assertEqual(args["timezone"], "Asia/Kolkata")
+        start = datetime.fromisoformat(str(args["startTime"]))
+        expected_date = datetime.now(ZoneInfo("Asia/Kolkata")).date() + timedelta(days=1)
+        self.assertEqual(start.date(), expected_date)
+        self.assertEqual(start.hour, 21)
+        self.assertEqual(start.minute, 0)
+        self.assertEqual(start.utcoffset(), timedelta(hours=5, minutes=30))
+
+
+class ToolCatalogServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tool_catalog_falls_back_to_static_metadata(self) -> None:
+        with patch(
+            "app.services.tool_catalog_service.get_mcp_health",
+            new=AsyncMock(side_effect=RuntimeError("mcp sleeping")),
+        ):
+            catalog = await ToolCatalogService().get_catalog()
+
+        tool_names = {tool["name"] for tool in catalog["tools"]}
+        self.assertEqual(catalog["source"], "static_fallback")
+        self.assertIn("calendar_schedule_meeting", tool_names)
 
 
 def _write_document(*, tempdir: str, document_id: str, filename: str, content: str) -> None:

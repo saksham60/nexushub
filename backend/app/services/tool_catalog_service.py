@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.logging import get_logger
 from app.services.mcp_client import get_mcp_health
+
+logger = get_logger(__name__)
 
 TOOL_METADATA: dict[str, dict[str, Any]] = {
     "auth_get_status": {
@@ -148,7 +151,15 @@ CATEGORY_SLUGS = {
 
 class ToolCatalogService:
     async def get_catalog(self) -> dict[str, Any]:
-        health = await get_mcp_health()
+        try:
+            health = await get_mcp_health(timeout_seconds=0.8)
+        except Exception as exc:
+            logger.warning(
+                "MCP tool catalog health probe failed; using static catalog fallback.",
+                extra={"metadata": {"errorType": type(exc).__name__}},
+            )
+            return _static_catalog()
+
         tools_payload = health.get("tools") if isinstance(health, dict) else {}
         categories_payload = (
             tools_payload.get("categories")
@@ -176,6 +187,8 @@ class ToolCatalogService:
                         "requiresApproval": bool(metadata.get("requiresApproval")),
                     }
                 )
+        if not tools:
+            return _static_catalog()
         return {
             "tools": tools,
             "count": len(tools),
@@ -186,3 +199,22 @@ class ToolCatalogService:
 def _category_slug(value: str) -> str:
     normalized = value.strip().lower()
     return CATEGORY_SLUGS.get(normalized, normalized.replace(" ", "_"))
+
+
+def _static_catalog() -> dict[str, Any]:
+    tools = [
+        {
+            "name": name,
+            "category": str(metadata.get("category") or "tools"),
+            "description": str(metadata.get("description") or f"{name} tool."),
+            "inputSchema": metadata.get("inputSchema") or {},
+            "requiresApproval": bool(metadata.get("requiresApproval")),
+        }
+        for name, metadata in TOOL_METADATA.items()
+    ]
+    return {
+        "tools": tools,
+        "count": len(tools),
+        "categories": sorted({str(tool["category"]) for tool in tools}),
+        "source": "static_fallback",
+    }

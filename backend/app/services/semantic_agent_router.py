@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langsmith import traceable
 
@@ -108,6 +111,10 @@ class SemanticAgentRouter:
                 reason="Tool catalog returned no tools.",
             )
 
+        deterministic = _deterministic_route(normalized, tool_names=tool_names)
+        if deterministic:
+            return deterministic
+
         try:
             selection = await self._llm.complete_json(
                 system_prompt=_router_system_prompt(),
@@ -121,14 +128,25 @@ class SemanticAgentRouter:
                 ),
             )
         except Exception as exc:
+            deterministic = _deterministic_route(normalized, tool_names=tool_names)
+            if deterministic:
+                deterministic.reason = (
+                    f"{deterministic.reason} OpenAI routing was unavailable, so deterministic routing was used."
+                )
+                return deterministic
             logger.warning(
                 "LLM semantic routing failed.",
                 extra={"metadata": {"errorType": type(exc).__name__, "messageLength": len(normalized)}},
             )
+            error_code = "LLM_ROUTER_UNAVAILABLE"
+            error_message = "NexusHub semantic routing is unavailable. Please try again."
+            if _is_rate_limit_error(exc):
+                error_code = "LLM_ROUTER_RATE_LIMITED"
+                error_message = "NexusHub AI routing is temporarily rate limited. Please try again shortly."
             return SemanticRoutingDecision(
                 response_type="error",
-                error_code="LLM_ROUTER_UNAVAILABLE",
-                error_message="NexusHub semantic routing is unavailable. Please try again.",
+                error_code=error_code,
+                error_message=error_message,
                 reason="LLM routing failed.",
             )
 
@@ -253,3 +271,184 @@ def _confidence(value: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(parsed, 1.0))
+
+
+def _deterministic_route(
+    message: str, *, tool_names: set[str]
+) -> SemanticRoutingDecision | None:
+    if "calendar_schedule_meeting" not in tool_names:
+        return None
+    parsed = _parse_calendar_schedule_message(message)
+    if not parsed:
+        return None
+    if parsed.get("missing"):
+        missing = ", ".join(parsed["missing"])
+        return SemanticRoutingDecision(
+            response_type="clarification",
+            tool_name="calendar_schedule_meeting",
+            arguments=parsed.get("arguments") or {},
+            confidence=0.82,
+            reason="Matched deterministic meeting scheduling pattern.",
+            requires_approval=True,
+            clarification_question=f"I need {missing} before I can schedule the meeting.",
+        )
+    return SemanticRoutingDecision(
+        response_type="tool",
+        tool_name="calendar_schedule_meeting",
+        arguments=parsed["arguments"],
+        confidence=0.9,
+        reason="Matched deterministic meeting scheduling pattern.",
+        requires_approval=True,
+    )
+
+
+def _parse_calendar_schedule_message(message: str) -> dict[str, Any] | None:
+    normalized = message.lower()
+    if not re.search(r"\b(schedule|book|set\s*up|setup|create)\b", normalized):
+        return None
+    if not re.search(r"\b(meeting|invite|call|sync)\b", normalized):
+        return None
+
+    timezone = _extract_timezone(normalized)
+    start_time = _extract_time(message)
+    attendees = _extract_attendees(message)
+    subject = _extract_subject(message, attendees=attendees)
+    arguments: dict[str, Any] = {
+        "subject": subject,
+        "attendees": attendees,
+        "timezone": timezone,
+    }
+    missing: list[str] = []
+    if not subject:
+        missing.append("a meeting title")
+    if start_time is None:
+        missing.append("a start time")
+    else:
+        target_date = _extract_date(
+            normalized, timezone=timezone, parsed_time=start_time
+        )
+        start_dt = datetime.combine(
+            target_date, start_time, tzinfo=_safe_zoneinfo(timezone)
+        )
+        end_dt = start_dt + timedelta(minutes=30)
+        arguments["startTime"] = start_dt.isoformat()
+        arguments["endTime"] = end_dt.isoformat()
+
+    if missing:
+        return {"arguments": arguments, "missing": missing}
+    return {"arguments": arguments}
+
+
+def _extract_timezone(normalized_message: str) -> str:
+    aliases = {
+        "ist": "Asia/Kolkata",
+        "india time": "Asia/Kolkata",
+        "utc": "UTC",
+        "gmt": "UTC",
+        "est": "America/New_York",
+        "edt": "America/New_York",
+        "pst": "America/Los_Angeles",
+        "pdt": "America/Los_Angeles",
+    }
+    for alias, timezone in aliases.items():
+        if re.search(rf"\b{re.escape(alias)}\b", normalized_message):
+            return timezone
+    return "Asia/Kolkata"
+
+
+def _extract_time(message: str) -> time | None:
+    match = re.search(
+        r"\b(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b",
+        message,
+        re.IGNORECASE,
+    )
+    if not match:
+        match = re.search(
+            r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)\b",
+            message,
+            re.IGNORECASE,
+        )
+    if not match:
+        return None
+
+    hour = int(match.group(1))
+    minute = int(match.group(2) or "0")
+    meridiem = (match.group(3) or "").lower().replace(".", "")
+    if minute > 59 or hour > 23:
+        return None
+    if meridiem == "pm" and hour < 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+    if hour > 23:
+        return None
+    return time(hour=hour, minute=minute)
+
+
+def _extract_date(
+    normalized_message: str, *, timezone: str, parsed_time: time
+) -> date:
+    now = datetime.now(_safe_zoneinfo(timezone))
+    if re.search(r"\btomorrow\b", normalized_message):
+        return (now + timedelta(days=1)).date()
+    if re.search(r"\btoday\b", normalized_message):
+        return now.date()
+
+    iso_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", normalized_message)
+    if iso_match:
+        try:
+            return date.fromisoformat(iso_match.group(1))
+        except ValueError:
+            pass
+
+    target = now.date()
+    if datetime.combine(target, parsed_time, tzinfo=now.tzinfo) <= now:
+        target = target + timedelta(days=1)
+    return target
+
+
+def _extract_attendees(message: str) -> list[str]:
+    emails = re.findall(
+        r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", message, re.IGNORECASE
+    )
+    if emails:
+        return list(dict.fromkeys(email.lower() for email in emails))
+
+    with_match = re.search(
+        r"\bwith\s+(.+?)(?=\s+(?:at|on|for|about|today|tomorrow)\b|[,.;]|$)",
+        message,
+        re.IGNORECASE,
+    )
+    if with_match and with_match.group(1).strip():
+        return [with_match.group(1).strip()]
+    return []
+
+
+def _extract_subject(message: str, *, attendees: list[str]) -> str:
+    about_match = re.search(
+        r"\b(?:about|regarding|for)\s+(.+?)(?=\s+(?:at|on|today|tomorrow)\b|[,.;]|$)",
+        message,
+        re.IGNORECASE,
+    )
+    if about_match and about_match.group(1).strip():
+        return _clean_subject(about_match.group(1))
+
+    if attendees:
+        return f"Meeting with {attendees[0]}"
+    return "Meeting"
+
+
+def _clean_subject(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip(" .,!?:;")[:120]
+
+
+def _safe_zoneinfo(timezone: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "429" in message or "rate limit" in message or "too many requests" in message
