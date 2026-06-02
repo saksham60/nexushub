@@ -125,3 +125,23 @@ create table if not exists knowledge_entity_aliases (
 
   created_at timestamptz default now()
 );
+
+create unique index if not exists knowledge_nodes_scope_external_idx
+  on knowledge_nodes (
+    user_id,
+    coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    source,
+    type,
+    external_id
+  )
+  where external_id is not null;
+
+create unique index if not exists knowledge_edges_scope_pair_idx
+  on knowledge_edges (
+    user_id,
+    coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    source_node_id,
+    target_node_id,
+    type,
+    source_system
+  );

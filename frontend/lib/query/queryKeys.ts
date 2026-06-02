@@ -19,5 +19,9 @@ export const queryKeys = {
   },
   uploads: {
     list: () => ["uploads", "list"] as const,
-  }
+  },
+  knowledge: {
+    graph: (filters: Record<string, unknown>) => ["knowledge", "graph", filters] as const,
+    entity: (entityId?: string | null) => ["knowledge", "entity", entityId] as const,
+  },
 };

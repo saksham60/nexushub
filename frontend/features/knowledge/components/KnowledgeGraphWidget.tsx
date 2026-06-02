@@ -1,70 +1,65 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { KnowledgeGraphResponse } from "../types";
-import { Network, Loader2, ArrowRight } from "lucide-react";
+import React from "react";
+import { ArrowRight, Loader2, Network } from "lucide-react";
 import Link from "next/link";
-import { useSession } from "@/features/session/hooks";
-import { apiClient } from "@/lib/api/client";
-import { endpoints } from "@/lib/api/endpoints";
+import { useKnowledgeGraph } from "../hooks";
 
 export function KnowledgeGraphWidget() {
-  const { data: session } = useSession();
-  const [data, setData] = useState<KnowledgeGraphResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!session || session.status !== "ok") return;
-      try {
-        const json = await apiClient.get<KnowledgeGraphResponse>(`${endpoints.knowledgeGraph}?user_id=${session.user.id}&workspace_id=${session.workspace.id}&limit=10`);
-        setData(json);
-      } catch (err) {
-        console.error("Failed to load widget graph data", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (session && session.status === "ok") {
-      fetchData();
-    }
-  }, [session]);
+  const graphQuery = useKnowledgeGraph({ limit: 10 });
+  const data = graphQuery.data;
 
   return (
-    <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 flex flex-col h-full relative overflow-hidden group hover:border-white/10 transition-all">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
-          <Network className="w-5 h-5" />
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/5 bg-slate-900/50 p-6 transition-all hover:border-white/10">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="rounded-lg bg-blue-500/10 p-2 text-blue-400">
+          <Network className="h-5 w-5" />
         </div>
-        <h3 className="text-white font-medium">Workspace Intelligence</h3>
+        <h3 className="font-medium text-white">Workspace Intelligence</h3>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center text-slate-500 gap-2">
-            <Loader2 className="w-5 h-5 animate-spin" />
+      <div className="flex flex-1 flex-col justify-center">
+        {graphQuery.isLoading ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Mapping your workspace...</span>
+          </div>
+        ) : graphQuery.isError ? (
+          <div className="text-center text-sm text-slate-500">
+            Workspace graph is unavailable.
           </div>
         ) : data && data.stats.totalNodes > 0 ? (
           <div className="space-y-3">
-            <p className="text-slate-400 text-sm">
-              Your workspace graph connects <strong className="text-slate-200">{data.stats.totalNodes} entities</strong> across {data.stats.totalEdges} relationships.
+            {(data.degraded || data.stale) && (
+              <p className="text-xs text-amber-300">Some graph sources need attention.</p>
+            )}
+            <p className="text-sm text-slate-400">
+              Your workspace graph connects{" "}
+              <strong className="text-slate-200">{data.stats.totalNodes} entities</strong>{" "}
+              across {data.stats.totalEdges} relationships.
             </p>
-            <div className="flex gap-2">
-              <span className="px-2 py-1 bg-orange-500/10 text-orange-400 text-xs rounded border border-orange-500/20">{data.stats.emailCount} Emails</span>
-              <span className="px-2 py-1 bg-purple-500/10 text-purple-400 text-xs rounded border border-purple-500/20">{data.stats.meetingCount} Meetings</span>
-              <span className="px-2 py-1 bg-green-500/10 text-green-400 text-xs rounded border border-green-500/20">{data.stats.documentCount} Docs</span>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded border border-orange-500/20 bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
+                {data.stats.emailCount} Emails
+              </span>
+              <span className="rounded border border-purple-500/20 bg-purple-500/10 px-2 py-1 text-xs text-purple-400">
+                {data.stats.meetingCount} Meetings
+              </span>
+              <span className="rounded border border-green-500/20 bg-green-500/10 px-2 py-1 text-xs text-green-400">
+                {data.stats.documentCount} Docs
+              </span>
             </div>
           </div>
         ) : (
-          <div className="text-slate-500 text-sm text-center">
-            No workspace graph data yet.
-          </div>
+          <div className="text-center text-sm text-slate-500">No workspace graph data yet.</div>
         )}
       </div>
 
-      <Link href="/knowledge" className="mt-6 flex items-center justify-center w-full gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 transition-colors rounded-xl font-medium text-sm">
-        View Knowledge Graph <ArrowRight className="w-4 h-4" />
+      <Link
+        href="/knowledge"
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10"
+      >
+        View Knowledge Graph <ArrowRight className="h-4 w-4" />
       </Link>
     </div>
   );

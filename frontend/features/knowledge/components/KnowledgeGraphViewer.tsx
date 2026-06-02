@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useRef, useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { ForceGraphMethods } from "react-force-graph-2d";
-import { KnowledgeNode, KnowledgeEdge, KnowledgeGraphResponse } from "../types";
+import { KnowledgeGraphResponse, KnowledgeNode } from "../types";
 
 // Node styling logic
 const NODE_COLORS: Record<string, string> = {
@@ -19,34 +19,43 @@ const NODE_COLORS: Record<string, string> = {
 
 interface Props {
   data: KnowledgeGraphResponse;
+  selectedNodeId?: string;
   onNodeClick: (node: KnowledgeNode) => void;
 }
 
-export function KnowledgeGraphViewer({ data, onNodeClick }: Props) {
+export function KnowledgeGraphViewer({ data, selectedNodeId, onNodeClick }: Props) {
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Responsive sizing
   useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
-      }
-    };
-    window.addEventListener("resize", updateSize);
+    if (!containerRef.current) return;
+    const element = containerRef.current;
+    const updateSize = () =>
+      setContainerSize({
+        width: element.clientWidth,
+        height: element.clientHeight,
+      });
     updateSize();
-    return () => window.removeEventListener("resize", updateSize);
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
-  // Format data for react-force-graph
-  const graphData = {
-    nodes: data.nodes.map(n => ({ ...n, val: n.type === "user" ? 5 : 2 })),
-    links: data.links.map(l => ({ ...l, source: l.source, target: l.target })),
-  };
+  const graphData = useMemo(
+    () => ({
+      nodes: data.nodes.map((node) => ({
+        ...node,
+        val: node.type === "user" ? 6 : node.type === "person" ? 3.5 : 2.6,
+      })),
+      links: data.links.map((link) => ({
+        ...link,
+        source: link.source,
+        target: link.target,
+      })),
+    }),
+    [data.links, data.nodes]
+  );
 
   const handleNodeClick = useCallback(
     (node: any) => {
@@ -70,39 +79,56 @@ export function KnowledgeGraphViewer({ data, onNodeClick }: Props) {
           graphData={graphData}
           nodeLabel="label"
           nodeColor={(node: any) => NODE_COLORS[node.type] || "#ffffff"}
-          linkColor={() => "rgba(255,255,255,0.2)"}
-          linkDirectionalParticles={2}
-          linkDirectionalParticleSpeed={d => 0.005}
+          linkColor={(link: any) =>
+            link.sourceSystem === "nexushub"
+              ? "rgba(148,163,184,0.15)"
+              : "rgba(255,255,255,0.25)"
+          }
+          linkWidth={(link: any) => Math.max(0.4, Math.min(Number(link.weight || 1), 4))}
+          linkDirectionalParticles={(link: any) => (Number(link.weight || 0) >= 0.7 ? 2 : 0)}
+          linkDirectionalParticleSpeed={(link: any) =>
+            Math.max(0.002, Math.min(Number(link.weight || 1) * 0.004, 0.012))
+          }
           onNodeClick={handleNodeClick}
           nodeCanvasObject={(node: any, ctx, globalScale) => {
             const label = node.label;
-            const fontSize = 12 / globalScale;
+            const color = NODE_COLORS[node.type] || "#ffffff";
+            const isSelected = node.id === selectedNodeId;
+            const radius = Number(node.val || 2) * (isSelected ? 1.5 : 1);
+            const fontSize = Math.max(3, 12 / globalScale);
             ctx.font = `${fontSize}px Sans-Serif`;
             const textWidth = ctx.measureText(label).width;
             const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.save();
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = "rgba(2, 6, 23, 0.82)";
             ctx.fillRect(
               node.x - bckgDimensions[0] / 2,
-              node.y - bckgDimensions[1] / 2 - 8,
+              node.y - bckgDimensions[1] / 2 - radius - 6,
               bckgDimensions[0],
               bckgDimensions[1]
             );
 
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = NODE_COLORS[node.type] || "#ffffff";
-            ctx.fillText(label, node.x, node.y - 8);
-            
-            // Draw circle
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = color;
+            ctx.fillText(label, node.x, node.y - radius - 6);
+            ctx.restore();
+
+            ctx.save();
+            ctx.shadowColor = color;
+            ctx.shadowBlur = isSelected ? 18 : 8;
             ctx.beginPath();
-            ctx.arc(node.x, node.y, node.val, 0, 2 * Math.PI, false);
-            ctx.fillStyle = NODE_COLORS[node.type] || "#ffffff";
+            ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+            ctx.fillStyle = color;
             ctx.fill();
-            
-            // Soft glow
-            ctx.shadowColor = NODE_COLORS[node.type] || "#ffffff";
-            ctx.shadowBlur = 10;
+            if (isSelected) {
+              ctx.lineWidth = 1.6 / globalScale;
+              ctx.strokeStyle = "#ffffff";
+              ctx.stroke();
+            }
+            ctx.restore();
           }}
         />
       )}

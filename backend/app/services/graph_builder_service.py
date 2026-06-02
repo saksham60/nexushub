@@ -5,11 +5,21 @@ from app.models.knowledge_graph import (
     KnowledgeNode,
     KnowledgeEdge,
     GraphStats,
-    NodeAction
+    NodeAction,
 )
 
 class GraphBuilderService:
-    def build_graph_response(self, nodes_data: list[dict[str, Any]], edges_data: list[dict[str, Any]]) -> KnowledgeGraphResponse:
+    def build_graph_response(
+        self,
+        nodes_data: list[dict[str, Any]],
+        edges_data: list[dict[str, Any]],
+        *,
+        source_status: dict[str, dict[str, Any]] | None = None,
+        filters: dict[str, Any] | None = None,
+        degraded: bool = False,
+        message: str | None = None,
+        stale: bool = False,
+    ) -> KnowledgeGraphResponse:
         nodes = []
         for n in nodes_data:
             actions = [NodeAction(**a) for a in n.get("actions", [])]
@@ -26,8 +36,16 @@ class GraphBuilderService:
                 actions=actions
             ))
 
+        node_ids = {node.id for node in nodes}
         edges = []
+        seen_edges: set[str] = set()
         for e in edges_data:
+            if e["source"] not in node_ids or e["target"] not in node_ids:
+                continue
+            edge_key = f"{e['source']}:{e['type']}:{e['target']}:{e['sourceSystem']}"
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
             edges.append(KnowledgeEdge(
                 id=e["id"],
                 source=e["source"],
@@ -64,5 +82,9 @@ class GraphBuilderService:
             links=edges,
             stats=stats,
             generatedAt=datetime.utcnow().isoformat() + "Z",
-            degraded=False
+            degraded=degraded,
+            message=message,
+            sourceStatus=source_status or {},
+            filters=filters or {},
+            stale=stale,
         )

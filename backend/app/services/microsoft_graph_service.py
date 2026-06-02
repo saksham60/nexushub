@@ -66,6 +66,32 @@ class MicrosoftGraphService:
             timezone="UTC",
         )
 
+    async def get_calendar_range(
+        self,
+        user_id: str,
+        workspace_id: str | None = None,
+        *,
+        days: int = 7,
+        timezone: str = "UTC",
+        top: int = 50,
+    ) -> dict[str, Any]:
+        tz = ZoneInfo(timezone)
+        start = datetime.now(tz)
+        end = start + timedelta(days=max(days, 1))
+        return await self._get(
+            user_id,
+            workspace_id,
+            "/me/calendarView",
+            params={
+                "startDateTime": start.isoformat(),
+                "endDateTime": end.isoformat(),
+                "$orderby": "start/dateTime",
+                "$top": min(max(top, 1), 50),
+                "$select": "id,subject,start,end,location,organizer,attendees,bodyPreview,isOnlineMeeting,webLink",
+            },
+            prefer_timezone=timezone,
+        )
+
     async def get_calendar_for_date(
         self,
         *,
@@ -100,7 +126,7 @@ class MicrosoftGraphService:
             "/me/drive/recent",
             params={
                 "$top": min(max(top, 1), 50),
-                "$select": "id,name,webUrl,lastModifiedDateTime,size,file,folder,remoteItem",
+                "$select": "id,name,webUrl,lastModifiedDateTime,size,file,folder,remoteItem,lastModifiedBy",
             },
         )
 

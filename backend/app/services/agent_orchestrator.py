@@ -20,7 +20,6 @@ from app.services.mcp_client import call_tool
 from app.services.semantic_agent_router import SemanticAgentRouter, SemanticRoutingDecision
 from app.services.knowledge_graph_service import KnowledgeGraphService
 from app.services.microsoft_graph_service import MicrosoftGraphService
-from app.config import get_settings
 
 logger = get_logger(__name__)
 
@@ -52,10 +51,9 @@ class AgentOrchestrator:
 
         # Search Knowledge Graph for Context
         try:
-            settings = get_settings()
-            ms_graph = MicrosoftGraphService(settings)
+            ms_graph = MicrosoftGraphService()
             kg_service = KnowledgeGraphService(ms_graph)
-            graph = await kg_service.build_knowledge_graph(user_id=user_id, workspace_id=workspace_id or "default", limit=50)
+            graph = await kg_service.build_knowledge_graph(user_id=user_id, workspace_id=workspace_id, limit=50)
             
             # Simple keyword matching for MVP
             query_lower = message.lower()

@@ -1,78 +1,152 @@
+"use client";
+
 import React from "react";
-import { KnowledgeNode } from "../types";
-import { X, Mail, Calendar, FileText, User, CheckSquare, Zap, Hash } from "lucide-react";
+import {
+  Calendar,
+  CheckSquare,
+  FileText,
+  Hash,
+  Loader2,
+  Mail,
+  User,
+  X,
+  Zap,
+} from "lucide-react";
+import { KnowledgeNode, NodeAction } from "../types";
+import { useKnowledgeEntityDetails } from "../hooks";
 
 interface Props {
   entity: KnowledgeNode | null;
   onClose: () => void;
-  onAction: (action: any) => void;
+  onAction: (action: NodeAction) => void;
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  email: <Mail className="w-5 h-5 text-orange-500" />,
-  meeting: <Calendar className="w-5 h-5 text-purple-500" />,
-  document: <FileText className="w-5 h-5 text-green-500" />,
-  person: <User className="w-5 h-5 text-blue-500" />,
-  user: <User className="w-5 h-5 text-blue-500" />,
-  approval: <CheckSquare className="w-5 h-5 text-red-500" />,
-  automation: <Zap className="w-5 h-5 text-cyan-500" />,
-  topic: <Hash className="w-5 h-5 text-yellow-500" />
+  email: <Mail className="h-5 w-5 text-orange-500" />,
+  meeting: <Calendar className="h-5 w-5 text-purple-500" />,
+  document: <FileText className="h-5 w-5 text-green-500" />,
+  person: <User className="h-5 w-5 text-blue-500" />,
+  user: <User className="h-5 w-5 text-blue-500" />,
+  approval: <CheckSquare className="h-5 w-5 text-red-500" />,
+  automation: <Zap className="h-5 w-5 text-cyan-500" />,
+  topic: <Hash className="h-5 w-5 text-yellow-500" />,
 };
 
 export function KnowledgeEntityDrawer({ entity, onClose, onAction }: Props) {
+  const detailsQuery = useKnowledgeEntityDetails(entity?.id);
+
   if (!entity) return null;
 
+  const displayEntity = detailsQuery.data?.entity || entity;
+  const relatedEntities = detailsQuery.data?.relatedEntities || [];
+  const actions = detailsQuery.data?.suggestedActions?.length
+    ? detailsQuery.data.suggestedActions
+    : displayEntity.actions || [];
+
   return (
-    <div className="absolute top-0 right-0 h-full w-80 bg-slate-900/80 backdrop-blur-xl border-l border-white/10 p-6 flex flex-col shadow-2xl animate-in slide-in-from-right z-50">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {TYPE_ICONS[entity.type]}
-          <h2 className="text-lg font-semibold text-white capitalize">{entity.type} Details</h2>
+    <div className="absolute right-0 top-0 z-50 flex h-full w-96 max-w-[calc(100vw-1.5rem)] flex-col border-l border-white/10 bg-slate-900/90 p-6 shadow-2xl backdrop-blur-xl animate-in slide-in-from-right">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          {TYPE_ICONS[displayEntity.type]}
+          <h2 className="truncate text-lg font-semibold capitalize text-white">
+            {displayEntity.type} Details
+          </h2>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
-          <X className="w-4 h-4" />
+        <button
+          onClick={onClose}
+          title="Close details"
+          className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
+      <div className="flex-1 space-y-6 overflow-y-auto pr-2">
         <div>
-          <h3 className="text-xl font-medium text-white mb-1">{entity.title || entity.label}</h3>
-          {entity.subtitle && <p className="text-sm text-slate-400">{entity.subtitle}</p>}
+          <h3 className="break-words text-xl font-medium text-white">
+            {displayEntity.title || displayEntity.label}
+          </h3>
+          {displayEntity.subtitle && (
+            <p className="mt-1 break-words text-sm text-slate-400">{displayEntity.subtitle}</p>
+          )}
         </div>
 
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Metadata</h4>
-          <div className="bg-white/5 rounded-lg p-4 space-y-2 text-sm text-slate-300">
-            <div className="flex justify-between">
+        {detailsQuery.isLoading && (
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading related context...
+          </div>
+        )}
+
+        <section className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Metadata
+          </h4>
+          <div className="space-y-2 rounded-lg bg-white/5 p-4 text-sm text-slate-300">
+            <div className="flex justify-between gap-3">
               <span className="text-slate-500">Source</span>
-              <span className="capitalize">{entity.source}</span>
+              <span className="capitalize">{displayEntity.source}</span>
             </div>
-            {Object.entries(entity.metadata || {}).map(([key, value]) => (
-              <div key={key} className="flex justify-between">
+            {Object.entries(displayEntity.metadata || {}).map(([key, value]) => (
+              <div key={key} className="flex justify-between gap-3">
                 <span className="text-slate-500 capitalize">{key}</span>
-                <span className="truncate max-w-[140px]" title={String(value)}>{String(value)}</span>
+                <span className="max-w-[180px] truncate text-right" title={String(value)}>
+                  {formatMetadataValue(value)}
+                </span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        {entity.actions && entity.actions.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</h4>
+        {relatedEntities.length > 0 && (
+          <section className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Related
+            </h4>
             <div className="space-y-2">
-              {entity.actions.map((action, idx) => (
+              {relatedEntities.slice(0, 8).map((related) => (
+                <div
+                  key={related.id}
+                  className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.03] p-3"
+                >
+                  {TYPE_ICONS[related.type]}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-200">
+                      {related.title || related.label}
+                    </p>
+                    <p className="text-xs capitalize text-slate-500">{related.type}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {actions.length > 0 && (
+          <section className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Actions
+            </h4>
+            <div className="space-y-2">
+              {actions.map((action, idx) => (
                 <button
-                  key={idx}
+                  key={`${action.label}-${idx}`}
                   onClick={() => onAction(action)}
-                  className="w-full text-left px-4 py-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-colors border border-blue-500/20 text-sm font-medium"
+                  className="w-full rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-left text-sm font-medium text-blue-300 transition-colors hover:bg-blue-500/20"
                 >
                   {action.label}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
     </div>
   );
+}
+
+function formatMetadataValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }

@@ -84,6 +84,13 @@ export interface GraphStats {
   topicCount?: number;
 }
 
+export interface GraphSourceStatus {
+  source: string;
+  status: "ok" | "error" | "skipped";
+  count: number;
+  message?: string;
+}
+
 export interface KnowledgeGraphResponse {
   nodes: KnowledgeNode[];
   links: KnowledgeEdge[];
@@ -91,6 +98,9 @@ export interface KnowledgeGraphResponse {
   generatedAt: string;
   degraded?: boolean;
   message?: string;
+  sourceStatus?: Record<string, GraphSourceStatus>;
+  filters?: Record<string, unknown>;
+  stale?: boolean;
 }
 
 export interface KnowledgeEntityDetails {

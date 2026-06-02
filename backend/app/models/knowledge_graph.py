@@ -25,6 +25,7 @@ NodeSource = Literal[
 ]
 
 Priority = Literal["high", "medium", "low"]
+GraphSourceState = Literal["ok", "error", "skipped"]
 CanvasType = Literal[
     "compose_email",
     "schedule_meeting",
@@ -88,6 +89,12 @@ class GraphStats(BaseModel):
     automationCount: int | None = None
     topicCount: int | None = None
 
+class GraphSourceStatus(BaseModel):
+    source: str
+    status: GraphSourceState
+    count: int = 0
+    message: str | None = None
+
 class KnowledgeGraphResponse(BaseModel):
     nodes: list[KnowledgeNode] = Field(default_factory=list)
     links: list[KnowledgeEdge] = Field(default_factory=list)
@@ -95,6 +102,9 @@ class KnowledgeGraphResponse(BaseModel):
     generatedAt: str
     degraded: bool = False
     message: str | None = None
+    sourceStatus: dict[str, GraphSourceStatus] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    stale: bool = False
 
 class KnowledgeEntityDetails(BaseModel):
     entity: KnowledgeNode
