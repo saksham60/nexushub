@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 
 from app.core.errors import NexusHubError, ConsentRequiredError
 from app.services.approval_service import ApprovalService
-from app.services.mcp_client import call_tool, get_mcp_health
+from app.services.mcp_client import call_tool
 from app.services.microsoft_connection_service import MicrosoftConnectionService
 from app.services.microsoft_graph_service import MicrosoftGraphService
 
@@ -24,21 +24,6 @@ async def feed(
     source_errors: dict[str, str] = {}
     items: list[dict[str, Any]] = []
     health = {"backend": "ok", "mcp": "ok", "microsoft": "connected"}
-
-    try:
-        mcp_payload = await asyncio.wait_for(
-            get_mcp_health(timeout_seconds=0.9),
-            timeout=1.0,
-        )
-        if str(mcp_payload.get("status") or "") != "ok":
-            health["mcp"] = "partial"
-            source_errors["mcp"] = "MCP health check did not return ok."
-    except asyncio.TimeoutError:
-        health["mcp"] = "partial"
-        source_errors["mcp"] = "MCP is waking up. Live tool results may be delayed."
-    except Exception as exc:
-        health["mcp"] = "partial"
-        source_errors["mcp"] = str(exc)
 
     microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)
     if not microsoft_status.get("connected"):
