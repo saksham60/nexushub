@@ -13,10 +13,10 @@ class McpClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
-    async def health(self) -> dict[str, Any]:
+    async def health(self, *, timeout_seconds: float = 5.0) -> dict[str, Any]:
         url = f"{self._settings.mcp_simple_tool_url.rstrip('/')}/health"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.get(url)
         except httpx.HTTPError as exc:
             raise GraphServiceError("MCP server is unreachable.") from exc
@@ -52,5 +52,5 @@ async def call_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]
     return await McpClient().call_tool(tool_name, arguments)
 
 
-async def get_mcp_health() -> dict[str, Any]:
-    return await McpClient().health()
+async def get_mcp_health(*, timeout_seconds: float = 5.0) -> dict[str, Any]:
+    return await McpClient().health(timeout_seconds=timeout_seconds)

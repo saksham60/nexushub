@@ -3,6 +3,7 @@ export const queryKeys = {
     me: () => ["session", "me"] as const,
   },
   health: () => ["health"] as const,
+  healthDependencies: () => ["health", "dependencies"] as const,
   microsoft: {
     status: () => ["microsoft", "status"] as const,
   },

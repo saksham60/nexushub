@@ -1,5 +1,6 @@
 export const endpoints = {
   health: "/health",
+  healthDependencies: "/health/dependencies",
   commandCenterFeed: "/api/command-center/feed",
   microsoftStatus: "/auth/microsoft/status",
   microsoftStart: "/auth/microsoft/start",

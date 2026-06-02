@@ -26,12 +26,18 @@ async def feed(
     health = {"backend": "ok", "mcp": "ok", "microsoft": "connected"}
 
     try:
-        mcp_payload = await get_mcp_health()
+        mcp_payload = await asyncio.wait_for(
+            get_mcp_health(timeout_seconds=0.9),
+            timeout=1.0,
+        )
         if str(mcp_payload.get("status") or "") != "ok":
-            health["mcp"] = "error"
+            health["mcp"] = "partial"
             source_errors["mcp"] = "MCP health check did not return ok."
+    except asyncio.TimeoutError:
+        health["mcp"] = "partial"
+        source_errors["mcp"] = "MCP is waking up. Live tool results may be delayed."
     except Exception as exc:
-        health["mcp"] = "error"
+        health["mcp"] = "partial"
         source_errors["mcp"] = str(exc)
 
     microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)

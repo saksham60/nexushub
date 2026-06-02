@@ -1,5 +1,5 @@
 export type HealthDependency = {
-  status: "ok" | "degraded" | "unreachable" | "unknown" | "connected" | "disconnected" | "error";
+  status: "ok" | "degraded" | "unreachable" | "warming" | "not_checked" | "unknown" | "connected" | "disconnected" | "error";
   service?: string;
   mode?: string;
   transport?: string;
