@@ -9,12 +9,12 @@ function getLocalSession(): SessionResponse {
     status: "ok",
     user: {
       id: userId,
-      email: "local@nexushub.app",
-      display_name: "NexusHub User",
+      email: "",
+      display_name: "Workspace User",
     },
     workspace: {
       id: "default",
-      name: "Default Workspace",
+      name: "Microsoft 365 Workspace",
     },
   };
 }

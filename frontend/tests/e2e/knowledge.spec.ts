@@ -1,6 +1,19 @@
 import { expect, test } from "@playwright/test";
 
 test("knowledge graph renders with mocked data", async ({ page }) => {
+  await page.route("**/auth/microsoft/status?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: true,
+        provider: "microsoft",
+        display_name: "Nexus User",
+        email: "me@example.com",
+        scopes: ["User.Read", "Mail.Read"],
+      }),
+    });
+  });
+
   await page.route("**/api/knowledge-graph?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",

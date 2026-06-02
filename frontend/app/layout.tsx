@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { AppShell } from "@/components/layout/AppShell";
-import { RouteGuard } from "@/components/layout/RouteGuard";
+import { AppFrame } from "@/components/layout/AppFrame";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -22,9 +21,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={inter.className}>
         <Providers>
-          <RouteGuard>
-            <AppShell>{children}</AppShell>
-          </RouteGuard>
+          <AppFrame>{children}</AppFrame>
           <Toaster richColors position="top-right" />
         </Providers>
       </body>

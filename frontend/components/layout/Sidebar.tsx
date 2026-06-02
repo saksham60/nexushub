@@ -29,11 +29,14 @@ export function Sidebar() {
   const { data: session } = useSession();
   const { data: microsoftStatus } = useMicrosoftStatus();
 
-  let userName = "Alex Carter";
+  let userName = "Workspace User";
+  let userDetail = "Microsoft 365 workspace";
   if (microsoftStatus?.connected && microsoftStatus.display_name) {
     userName = microsoftStatus.display_name;
-  } else if (session?.status === "ok" && session.user.display_name !== "NexusHub User") {
+    userDetail = microsoftStatus.email || "Connected account";
+  } else if (session?.status === "ok" && session.user.display_name !== "Workspace User") {
     userName = session.user.display_name;
+    userDetail = session.user.email;
   }
   
   const initials = userName.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
@@ -174,7 +177,7 @@ export function Sidebar() {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-foreground">{userName}</span>
-                  <span className="text-xs text-muted-foreground">Chief Operating Officer</span>
+                  <span className="text-xs text-muted-foreground">{userDetail}</span>
                 </div>
               </div>
               <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />

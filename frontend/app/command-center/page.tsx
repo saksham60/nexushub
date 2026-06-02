@@ -15,7 +15,6 @@ import { AgentResponsePanel } from "@/components/agent/AgentResponsePanel";
 import { useConnectMicrosoft, useMicrosoftStatus } from "@/features/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSession } from "@/features/session/hooks";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { useCanvas } from "@/features/canvas/CanvasContext";
@@ -26,7 +25,6 @@ export default function CommandCenterPage() {
   const [promptInput, setPromptInput] = useState("");
   const sendAgentMessage = useSendAgentMessage();
   const connectMicrosoft = useConnectMicrosoft();
-  const { data: session } = useSession();
   const { data: microsoftStatus } = useMicrosoftStatus();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -34,10 +32,8 @@ export default function CommandCenterPage() {
   const { openCanvas } = useCanvas();
   
   let userName: string | null = null;
-  if (microsoftStatus?.connected && microsoftStatus.display_name && !microsoftStatus.display_name.includes("NexusHub")) {
+  if (microsoftStatus?.connected && microsoftStatus.display_name) {
     userName = microsoftStatus.display_name.split(" ")[0];
-  } else if (session?.status === "ok" && !session.user.display_name.includes("NexusHub")) {
-    userName = session.user.display_name.split(" ")[0];
   }
 
   const initialFilter = searchParams?.get("filter") || "all";
@@ -217,12 +213,15 @@ export default function CommandCenterPage() {
       <div className="pt-6">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-8 grid grid-cols-2 lg:grid-cols-3 gap-4">
-            <InsightMiniCard title="Outlook" value="Email volume is up 18% vs last 2 weeks" trend="up" color="blue" />
-            <InsightMiniCard title="Teams" value="You've been mentioned 23 times this week" trend="up" color="indigo" />
-            <InsightMiniCard title="Word" value="7 documents need your review" trend="down" color="blue" />
-            <InsightMiniCard title="Excel" value="Q3 forecast updated by Finance team" trend="up" color="emerald" />
-            <InsightMiniCard title="PowerPoint" value="2 decks are ready for your review" trend="up" color="orange" />
-            <InsightMiniCard title="OneNote" value="3 new notes from Leadership Sync" trend="up" color="purple" />
+            {workspaceSignals(counts).map((signal) => (
+              <InsightMiniCard
+                key={signal.title}
+                title={signal.title}
+                value={signal.value}
+                count={signal.count}
+                color={signal.color}
+              />
+            ))}
           </div>
           <div className="md:col-span-4 min-h-[200px]">
             <KnowledgeGraphWidget />
@@ -233,16 +232,59 @@ export default function CommandCenterPage() {
   );
 }
 
-function InsightMiniCard({ title, value, trend, color }: { title: string, value: string, trend: "up" | "down", color: string }) {
+function workspaceSignals(counts: ReturnType<typeof useActionQueue>["counts"]) {
+  return [
+    {
+      title: "Outlook",
+      value: `${counts?.repliesNeeded ?? 0} replies need attention`,
+      count: counts?.repliesNeeded ?? 0,
+      color: "blue",
+    },
+    {
+      title: "Calendar",
+      value: `${counts?.meetingsToday ?? 0} meetings on today's agenda`,
+      count: counts?.meetingsToday ?? 0,
+      color: "indigo",
+    },
+    {
+      title: "OneDrive",
+      value: `${counts?.filesToReview ?? 0} files ready for review`,
+      count: counts?.filesToReview ?? 0,
+      color: "emerald",
+    },
+    {
+      title: "Approvals",
+      value: `${counts?.approvalsPending ?? 0} approvals pending`,
+      count: counts?.approvalsPending ?? 0,
+      color: "orange",
+    },
+    {
+      title: "Teams",
+      value: `${counts?.teamsMentions ?? 0} Teams items surfaced`,
+      count: counts?.teamsMentions ?? 0,
+      color: "purple",
+    },
+    {
+      title: "AI",
+      value: `${counts?.aiSuggestions ?? 0} suggested next moves`,
+      count: counts?.aiSuggestions ?? 0,
+      color: "cyan",
+    },
+  ];
+}
+
+function InsightMiniCard({ title, value, count, color }: { title: string, value: string, count: number, color: string }) {
   const bgColors: Record<string, string> = {
     blue: "bg-[#0078D4]/10 border-[#0078D4]/20 text-[#0078D4]",
     indigo: "bg-[#464EB8]/10 border-[#464EB8]/20 text-[#464EB8]",
     emerald: "bg-[#217346]/10 border-[#217346]/20 text-[#217346]",
     orange: "bg-[#D24726]/10 border-[#D24726]/20 text-[#D24726]",
     purple: "bg-[#7719AA]/10 border-[#7719AA]/20 text-[#7719AA]",
+    cyan: "bg-cyan-400/10 border-cyan-400/20 text-cyan-300",
   };
+  const intensity = Math.min(count, 5);
   return (
-    <div className="rounded-xl border border-white/10 bg-card p-4 hover:bg-white/5 transition-colors cursor-pointer flex flex-col justify-between h-32">
+    <div className="rounded-xl border border-white/10 bg-card p-4 transition-colors hover:bg-white/5 flex flex-col justify-between h-32">
       <div className="flex items-center gap-2">
         <div className={`h-6 w-6 rounded flex items-center justify-center border ${bgColors[color]}`}>
           <span className="text-[10px] font-bold">{title[0]}</span>
@@ -251,9 +293,14 @@ function InsightMiniCard({ title, value, trend, color }: { title: string, value:
       </div>
       <div>
         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{value}</p>
-        <svg className="w-full h-6" viewBox="0 0 100 20" preserveAspectRatio="none">
-          <path d="M0,15 Q20,5 40,10 T80,5 T100,10" fill="none" stroke={trend === "up" ? "currentColor" : "rgba(255,255,255,0.2)"} strokeWidth="2" className={bgColors[color].split(" ")[2]} />
-        </svg>
+        <div className="grid grid-cols-5 gap-1">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <span
+              key={index}
+              className={`h-1.5 rounded-full ${index < intensity ? bgColors[color].split(" ")[0] : "bg-white/10"}`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

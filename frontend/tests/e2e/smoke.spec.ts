@@ -1,13 +1,31 @@
 import { test, expect } from '@playwright/test';
 
-test('app loads and redirects to home', async ({ page }) => {
-  // We mock backend responses in a real scenario, but for smoke we just see if the page renders.
+test('public landing page loads', async ({ page }) => {
+  await page.route("**/auth/microsoft/status?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        connected: false,
+        provider: "microsoft",
+        connect_url: "/auth/microsoft/start",
+      }),
+    });
+  });
+  await page.route("**/health", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "ok",
+        service: "nexushub-backend",
+        backend: { status: "ok", service: "nexushub-backend" },
+        dependencies: {},
+      }),
+    });
+  });
+
   await page.goto('http://localhost:3000/');
-  
-  // By default, it redirects to /command-center
-  await expect(page).toHaveURL(/.*\/command-center/);
-  
-  // Verify it doesn't crash and renders the degraded UI
-  const mainContent = page.locator('main');
-  await expect(mainContent).toBeVisible();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'NexusHub' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Continue with Microsoft 365/i })).toBeVisible();
 });
