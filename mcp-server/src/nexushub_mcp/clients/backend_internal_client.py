@@ -57,11 +57,19 @@ class BackendInternalClient:
         )
 
     async def get_today_calendar(
-        self, *, user_id: str, workspace_id: str | None = None
+        self,
+        *,
+        user_id: str,
+        workspace_id: str | None = None,
+        timezone: str = "Asia/Kolkata",
     ) -> dict[str, Any]:
         return await self._post(
             "/internal/graph/calendar/today",
-            {"user_id": user_id, "workspace_id": workspace_id},
+            {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "timezone": timezone,
+            },
         )
 
     async def get_recent_files(

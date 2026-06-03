@@ -31,7 +31,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             return missing
         try:
             data = await runtime.backend_client.get_today_calendar(
-                user_id=user_id or "", workspace_id=workspace_id
+                user_id=user_id or "", workspace_id=workspace_id, timezone=timezone
             )
         except BackendInternalClientError as exc:
             return exc.to_mcp_response()
@@ -70,7 +70,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             return missing
         try:
             data = await runtime.backend_client.get_today_calendar(
-                user_id=user_id or "", workspace_id=workspace_id
+                user_id=user_id or "", workspace_id=workspace_id, timezone=timezone
             )
         except BackendInternalClientError as exc:
             return exc.to_mcp_response()
@@ -112,7 +112,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             return missing
         try:
             data = await runtime.backend_client.get_today_calendar(
-                user_id=user_id or "", workspace_id=workspace_id
+                user_id=user_id or "", workspace_id=workspace_id, timezone=timezone
             )
         except BackendInternalClientError as exc:
             return exc.to_mcp_response()

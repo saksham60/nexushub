@@ -236,8 +236,8 @@ function workspaceSignals(counts: ReturnType<typeof useActionQueue>["counts"]) {
   return [
     {
       title: "Outlook",
-      value: `${counts?.repliesNeeded ?? 0} replies need attention`,
-      count: counts?.repliesNeeded ?? 0,
+      value: `${counts?.unreadEmail ?? counts?.repliesNeeded ?? 0} unread, ${counts?.repliesNeeded ?? 0} need reply`,
+      count: counts?.unreadEmail ?? counts?.repliesNeeded ?? 0,
       color: "blue",
     },
     {

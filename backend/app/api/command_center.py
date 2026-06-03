@@ -24,6 +24,7 @@ async def feed(
     source_errors: dict[str, str] = {}
     items: list[dict[str, Any]] = []
     health = {"backend": "ok", "mcp": "ok", "microsoft": "connected"}
+    status_counts: dict[str, int] = {}
 
     microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)
     if not microsoft_status.get("connected"):
@@ -55,10 +56,13 @@ async def feed(
         ),
         _safe_approvals(user_id=user_id, workspace_id=workspace_id),
         _safe_teams(user_id=user_id, workspace_id=workspace_id),
+        _safe_mail_status(user_id=user_id, workspace_id=workspace_id),
     )
 
     for source, payload, error, error_kind in results:
         if error:
+            if error_kind == "status_optional":
+                continue
             if error_kind == "teams_unsupported":
                 continue # Do not surface Teams API block as an error
             source_errors[source] = error
@@ -77,6 +81,8 @@ async def feed(
             items.extend(_approval_items(payload))
         elif source == "teams":
             items.extend(_team_items(payload))
+        elif source == "mail_status":
+            status_counts["unreadEmail"] = _unread_email_count(payload)
 
     if health["microsoft"] != "disconnected" and any(
         _is_microsoft_auth_error(error) for error in source_errors.values()
@@ -88,6 +94,7 @@ async def feed(
         health=health,
         items=items,
         source_errors=source_errors,
+        status_counts=status_counts,
     )
 
 
@@ -149,18 +156,35 @@ async def _safe_teams(
         return "teams", {}, str(exc), None
 
 
+async def _safe_mail_status(
+    *, user_id: str, workspace_id: str | None
+) -> tuple[str, dict[str, Any], str | None, str | None]:
+    try:
+        service = MicrosoftGraphService()
+        unread = await service.get_unread_messages(
+            user_id=user_id, workspace_id=workspace_id, top=50
+        )
+        return "mail_status", unread, None, None
+    except Exception as exc:
+        return "mail_status", {}, str(exc), "status_optional"
+
+
 def _feed_response(
     *,
     mailbox_email: str | None,
     health: dict[str, str],
     items: list[dict[str, Any]],
     source_errors: dict[str, str],
+    status_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    status_counts = status_counts or {}
+    replies_needed = sum(1 for item in items if item["type"] == "email")
     return {
         "mailboxEmail": mailbox_email,
         "health": health,
         "counts": {
-            "repliesNeeded": sum(1 for item in items if item["type"] == "email"),
+            "repliesNeeded": replies_needed,
+            "unreadEmail": status_counts.get("unreadEmail", replies_needed),
             "meetingsToday": sum(1 for item in items if item["type"] == "calendar"),
             "approvalsPending": sum(1 for item in items if item["type"] == "approval"),
             "filesToReview": sum(1 for item in items if item["type"] == "document"),
@@ -171,6 +195,13 @@ def _feed_response(
         "items": items,
         "errors": source_errors,
     }
+
+
+def _unread_email_count(payload: dict[str, Any]) -> int:
+    messages = payload.get("value")
+    if not isinstance(messages, list):
+        return 0
+    return sum(1 for message in messages if isinstance(message, dict) and message.get("isRead") is False)
 
 
 def _ai_suggestion_count(items: list[dict[str, Any]]) -> int:

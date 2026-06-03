@@ -23,6 +23,7 @@ export type CommandCenterFeedHealth = {
 
 export type CommandCenterFeedCounts = {
   repliesNeeded: number;
+  unreadEmail?: number;
   meetingsToday: number;
   approvalsPending: number;
   filesToReview: number;

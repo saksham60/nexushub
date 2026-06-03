@@ -39,6 +39,20 @@ class MicrosoftGraphService:
             },
         )
 
+    async def get_unread_messages(
+        self, user_id: str, workspace_id: str | None = None, top: int = 50
+    ) -> dict[str, Any]:
+        return await self._get(
+            user_id,
+            workspace_id,
+            "/me/mailFolders/inbox/messages",
+            params={
+                "$top": min(max(top, 1), 50),
+                "$filter": "isRead eq false",
+                "$select": "id,subject,receivedDateTime,isRead",
+            },
+        )
+
     async def get_message(
         self,
         *,
@@ -56,14 +70,17 @@ class MicrosoftGraphService:
         )
 
     async def get_today_calendar(
-        self, user_id: str, workspace_id: str | None = None
+        self,
+        user_id: str,
+        workspace_id: str | None = None,
+        timezone: str = "Asia/Kolkata",
     ) -> dict[str, Any]:
-        now = datetime.now(UTC)
+        now = datetime.now(ZoneInfo(timezone))
         return await self.get_calendar_for_date(
             user_id=user_id,
             workspace_id=workspace_id,
             day=now.date(),
-            timezone="UTC",
+            timezone=timezone,
         )
 
     async def get_calendar_range(

@@ -91,6 +91,27 @@ class MicrosoftGraphServiceTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_today_calendar_uses_requested_timezone(self) -> None:
+        async def run_test() -> None:
+            with patch.object(
+                MicrosoftGraphService,
+                "get_calendar_for_date",
+                new=AsyncMock(return_value={"value": []}),
+            ) as get_calendar_for_date:
+                result = await MicrosoftGraphService().get_today_calendar(
+                    user_id="user-1",
+                    workspace_id=None,
+                    timezone="Asia/Kolkata",
+                )
+
+            self.assertEqual(result, {"value": []})
+            get_calendar_for_date.assert_awaited_once()
+            self.assertEqual(get_calendar_for_date.await_args.kwargs["timezone"], "Asia/Kolkata")
+
+        import asyncio
+
+        asyncio.run(run_test())
+
     def test_only_400_and_404_create_reply_errors_use_draft_fallback(self) -> None:
         self.assertTrue(_should_fallback_to_standalone_draft(httpx.Response(400)))
         self.assertTrue(_should_fallback_to_standalone_draft(httpx.Response(404)))

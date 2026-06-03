@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.errors import AuthenticationRequiredError, NexusHubError
 from app.core.security import verify_internal_service_token
 from app.models.schemas import (
+    CalendarTodayRequest,
     RecentFilesRequest,
     RecentMailRequest,
     UserWorkspaceRequest,
@@ -51,11 +52,11 @@ async def mail_recent(payload: RecentMailRequest) -> dict[str, object]:
 
 
 @router.post("/calendar/today")
-async def calendar_today(payload: UserWorkspaceRequest) -> dict[str, object]:
+async def calendar_today(payload: CalendarTodayRequest) -> dict[str, object]:
     try:
         return {
             "data": await MicrosoftGraphService().get_today_calendar(
-                payload.user_id, payload.workspace_id
+                payload.user_id, payload.workspace_id, payload.timezone
             )
         }
     except NexusHubError as exc:

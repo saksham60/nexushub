@@ -18,6 +18,10 @@ class RecentFilesRequest(UserWorkspaceRequest):
     top: int = Field(default=10, ge=1, le=50)
 
 
+class CalendarTodayRequest(UserWorkspaceRequest):
+    timezone: str = "Asia/Kolkata"
+
+
 class ApprovalCreateRequest(BaseModel):
     user_id: str
     workspace_id: str | None = None

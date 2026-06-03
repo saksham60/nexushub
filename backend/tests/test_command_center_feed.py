@@ -15,6 +15,7 @@ class CommandCenterFeedTests(unittest.IsolatedAsyncioTestCase):
         }
         graph_service = Mock()
         graph_service.get_recent_teams_chats = AsyncMock(return_value={"value": []})
+        graph_service.get_unread_messages = AsyncMock(return_value={"value": []})
 
         with (
             patch("app.services.mcp_client.McpClient.health", new_callable=AsyncMock) as mcp_health,
@@ -29,6 +30,37 @@ class CommandCenterFeedTests(unittest.IsolatedAsyncioTestCase):
         mcp_health.assert_not_called()
         self.assertEqual(response["health"]["mcp"], "ok")
         self.assertEqual(response["errors"], {})
+        self.assertEqual(response["counts"]["unreadEmail"], 0)
+
+    async def test_feed_counts_unread_mail_separately_from_reply_needed(self) -> None:
+        microsoft_connection = Mock()
+        microsoft_connection.get_status.return_value = {
+            "connected": True,
+            "email": "user@example.com",
+        }
+        graph_service = Mock()
+        graph_service.get_recent_teams_chats = AsyncMock(return_value={"value": []})
+        graph_service.get_unread_messages = AsyncMock(
+            return_value={
+                "value": [
+                    {"id": "msg-1", "isRead": False},
+                    {"id": "msg-2", "isRead": False},
+                    {"id": "msg-3", "isRead": True},
+                ]
+            }
+        )
+
+        with (
+            patch("app.api.command_center.MicrosoftConnectionService", return_value=microsoft_connection),
+            patch("app.api.command_center.call_tool", new=AsyncMock(return_value={"result": {"ok": True}})),
+            patch("app.api.command_center.ApprovalService") as approval_service_class,
+            patch("app.api.command_center.MicrosoftGraphService", return_value=graph_service),
+        ):
+            approval_service_class.return_value.list_pending.return_value = {"items": []}
+            response = await feed(user_id="user-1", workspace_id=None)
+
+        self.assertEqual(response["counts"]["repliesNeeded"], 0)
+        self.assertEqual(response["counts"]["unreadEmail"], 2)
 
     async def test_auth_required_tool_response_is_microsoft_auth_error(self) -> None:
         with patch("app.api.command_center.call_tool", new=AsyncMock(return_value={
