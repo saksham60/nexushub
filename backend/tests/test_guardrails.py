@@ -18,6 +18,7 @@ from app.core.errors import (
     UnsupportedDocumentError,
 )
 from app.services.document_service import DocumentService
+from app.services.agent_orchestrator import _execution_canvas_for_response
 from app.services.semantic_agent_router import SemanticAgentRouter
 from app.services.tool_catalog_service import ToolCatalogService
 
@@ -269,6 +270,28 @@ class ToolCatalogServiceTests(unittest.IsolatedAsyncioTestCase):
         tool_names = {tool["name"] for tool in catalog["tools"]}
         self.assertEqual(catalog["source"], "static_fallback")
         self.assertIn("calendar_schedule_meeting", tool_names)
+
+
+class AgentExecutionCanvasTests(unittest.TestCase):
+    def test_calendar_execution_canvas_includes_top_level_approval_id(self) -> None:
+        canvas = _execution_canvas_for_response(
+            {
+                "type": "approval_required",
+                "message": "Review meeting schedule",
+                "toolUsed": "calendar_reschedule_event",
+                "approvalId": "approval-1",
+                "data": {
+                    "arguments": {
+                        "targetStartTime": "2026-06-03T21:00:00+05:30",
+                    }
+                },
+            }
+        )
+
+        self.assertIsNotNone(canvas)
+        assert canvas is not None
+        self.assertEqual(canvas["type"], "schedule_meeting")
+        self.assertEqual(canvas["payload"]["approvalId"], "approval-1")
 
 
 def _write_document(*, tempdir: str, document_id: str, filename: str, content: str) -> None:

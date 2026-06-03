@@ -488,7 +488,11 @@ def _follow_up_message(*, message: str, pending: PendingAgentIntent) -> str:
 
 def _execution_canvas_for_response(response: dict[str, Any]) -> dict[str, Any] | None:
     tool_name = str(response.get("toolUsed") or response.get("tool_used") or "")
-    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    data = dict(response.get("data") if isinstance(response.get("data"), dict) else {})
+    if response.get("approvalId") and not data.get("approvalId"):
+        data["approvalId"] = response.get("approvalId")
+    if isinstance(response.get("approval"), dict) and not data.get("approval"):
+        data["approval"] = response.get("approval")
     title = str(response.get("message") or data.get("title") or "Review action")
 
     if tool_name.startswith("mail_"):
