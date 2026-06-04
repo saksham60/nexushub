@@ -93,6 +93,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
         workspace_id: str | None = None,
         eventId: str | None = None,
         meetingTitle: str | None = None,
+        timezone: str = "Asia/Kolkata",
     ) -> dict[str, Any]:
         log_tool_call(
             logger,
@@ -100,6 +101,7 @@ def register_calendar_tools(mcp: Any, runtime: NexusHubRuntime) -> None:
             {
                 "hasEventId": bool(eventId),
                 "hasMeetingTitle": bool(meetingTitle),
+                "timezone": timezone,
                 "hasUserId": bool(user_id),
             },
         )

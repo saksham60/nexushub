@@ -25,6 +25,7 @@ export type CommandCenterFeedCounts = {
   repliesNeeded: number;
   unreadEmail?: number;
   meetingsToday: number;
+  upcomingMeetings?: number;
   approvalsPending: number;
   filesToReview: number;
   teamsMentions?: number;

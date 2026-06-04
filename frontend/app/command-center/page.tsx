@@ -233,6 +233,7 @@ export default function CommandCenterPage() {
 }
 
 function workspaceSignals(counts: ReturnType<typeof useActionQueue>["counts"]) {
+  const calendarCount = counts?.upcomingMeetings ?? counts?.meetingsToday ?? 0;
   return [
     {
       title: "Outlook",
@@ -242,8 +243,8 @@ function workspaceSignals(counts: ReturnType<typeof useActionQueue>["counts"]) {
     },
     {
       title: "Calendar",
-      value: `${counts?.meetingsToday ?? 0} meetings on today's agenda`,
-      count: counts?.meetingsToday ?? 0,
+      value: `${calendarCount} upcoming meetings`,
+      count: calendarCount,
       color: "indigo",
     },
     {

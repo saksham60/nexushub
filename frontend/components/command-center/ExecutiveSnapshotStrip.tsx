@@ -13,14 +13,14 @@ interface ExecutiveSnapshotStripProps {
 
 export function ExecutiveSnapshotStrip({ items, counts, activeFilter, onFilter }: ExecutiveSnapshotStripProps) {
   const unreadEmailCount = counts?.unreadEmail ?? counts?.repliesNeeded ?? items.filter(i => i.type === "email").length;
-  const meetingCount = counts?.meetingsToday ?? items.filter(i => i.type === "calendar").length;
+  const meetingCount = counts?.upcomingMeetings ?? counts?.meetingsToday ?? items.filter(i => i.type === "calendar").length;
   const docCount = counts?.filesToReview ?? items.filter(i => i.type === "document").length;
   const teamCount = counts?.teamsMentions ?? items.filter(i => i.type === "team").length;
   const priorityCount = items.filter(i => i.priority === "high").length;
 
   const stats = [
     { label: "Top Priorities", count: priorityCount || 0, icon: Star, color: "text-purple-400", filter: "all", detail: priorityCount > 0 ? `${priorityCount} items` : "All clear", detailColor: priorityCount > 0 ? "text-purple-400" : "text-muted-foreground" },
-    { label: "Calendar", count: meetingCount || 0, icon: Calendar, color: "text-blue-400", filter: "calendar", detail: meetingCount > 0 ? "Check schedule" : "No meetings", detailColor: meetingCount > 0 ? "text-blue-400" : "text-muted-foreground" },
+    { label: "Calendar", count: meetingCount || 0, icon: Calendar, color: "text-blue-400", filter: "calendar", detail: meetingCount > 0 ? "Upcoming" : "No meetings", detailColor: meetingCount > 0 ? "text-blue-400" : "text-muted-foreground" },
     { label: "Unread Email", count: unreadEmailCount || 0, icon: Mail, color: "text-blue-400", filter: "email", detail: unreadEmailCount > 0 ? "Unread inbox" : "Inbox zero", detailColor: unreadEmailCount > 0 ? "text-blue-400" : "text-muted-foreground" },
     { label: "Teams Activity", count: teamCount || 0, icon: Users, color: "text-indigo-400", filter: "team", detail: teamCount > 0 ? "New mentions" : "All caught up", detailColor: teamCount > 0 ? "text-indigo-400" : "text-muted-foreground" },
     { label: "Doc Intelligence", count: docCount || 0, icon: FileText, color: "text-blue-400", filter: "document", detail: docCount > 0 ? "To review" : "Ready", detailColor: docCount > 0 ? "text-blue-400" : "text-muted-foreground" },

@@ -80,7 +80,14 @@ function updateCountsAfterRemoval(
       return { ...nextCounts, repliesNeeded: decrement(nextCounts.repliesNeeded) };
     }
     if (item.type === "calendar") {
-      return { ...nextCounts, meetingsToday: decrement(nextCounts.meetingsToday) };
+      return {
+        ...nextCounts,
+        meetingsToday: decrement(nextCounts.meetingsToday),
+        upcomingMeetings:
+          nextCounts.upcomingMeetings === undefined
+            ? undefined
+            : decrement(nextCounts.upcomingMeetings),
+      };
     }
     if (item.type === "approval") {
       return { ...nextCounts, approvalsPending: decrement(nextCounts.approvalsPending) };

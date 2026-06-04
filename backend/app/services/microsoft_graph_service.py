@@ -49,7 +49,7 @@ class MicrosoftGraphService:
             params={
                 "$top": min(max(top, 1), 50),
                 "$filter": "isRead eq false",
-                "$select": "id,subject,receivedDateTime,isRead",
+                "$select": "id,conversationId,from,replyTo,toRecipients,subject,bodyPreview,body,webLink,receivedDateTime,isRead,importance",
             },
         )
 

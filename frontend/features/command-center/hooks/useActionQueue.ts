@@ -10,11 +10,32 @@ export function useCommandCenterFeed() {
   return useQuery<CommandCenterFeedResponse>({
     queryKey: queryKeys.commandCenter.feed(),
     queryFn: () => {
-      const query = new URLSearchParams({ user_id: ensureUserId() });
-      return apiClient.get<CommandCenterFeedResponse>(`${endpoints.commandCenterFeed}?${query.toString()}`);
+      return apiClient.get<CommandCenterFeedResponse>(
+        buildCommandCenterFeedEndpoint(ensureUserId()),
+      );
     },
     retry: 1,
   });
+}
+
+export function buildCommandCenterFeedEndpoint(
+  userId: string,
+  timezone: string = browserTimezone(),
+) {
+  const query = new URLSearchParams({
+    user_id: userId,
+    timezone: normalizeTimezone(timezone),
+  });
+  return `${endpoints.commandCenterFeed}?${query.toString()}`;
+}
+
+function browserTimezone() {
+  if (typeof Intl === "undefined") return "Asia/Kolkata";
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+}
+
+function normalizeTimezone(timezone: string) {
+  return timezone === "Asia/Calcutta" ? "Asia/Kolkata" : timezone;
 }
 
 export function useActionQueue(initialFilter: string = "all") {

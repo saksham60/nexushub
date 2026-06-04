@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
+from zoneinfo import ZoneInfo
 
 from app.api.command_center import _safe_tool, feed
 
@@ -16,6 +18,7 @@ class CommandCenterFeedTests(unittest.IsolatedAsyncioTestCase):
         graph_service = Mock()
         graph_service.get_recent_teams_chats = AsyncMock(return_value={"value": []})
         graph_service.get_unread_messages = AsyncMock(return_value={"value": []})
+        graph_service.get_calendar_range = AsyncMock(return_value={"value": []})
 
         with (
             patch("app.services.mcp_client.McpClient.health", new_callable=AsyncMock) as mcp_health,
@@ -40,6 +43,7 @@ class CommandCenterFeedTests(unittest.IsolatedAsyncioTestCase):
         }
         graph_service = Mock()
         graph_service.get_recent_teams_chats = AsyncMock(return_value={"value": []})
+        graph_service.get_calendar_range = AsyncMock(return_value={"value": []})
         graph_service.get_unread_messages = AsyncMock(
             return_value={
                 "value": [
@@ -61,6 +65,49 @@ class CommandCenterFeedTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response["counts"]["repliesNeeded"], 0)
         self.assertEqual(response["counts"]["unreadEmail"], 2)
+        self.assertEqual(len([item for item in response["items"] if item["type"] == "email"]), 2)
+        self.assertEqual(response["items"][0]["primaryActionLabel"], "Review Email")
+
+    async def test_feed_adds_upcoming_calendar_items_from_graph_status(self) -> None:
+        microsoft_connection = Mock()
+        microsoft_connection.get_status.return_value = {
+            "connected": True,
+            "email": "user@example.com",
+        }
+        today = datetime.now(ZoneInfo("UTC"))
+        tomorrow = today + timedelta(days=1)
+        graph_service = Mock()
+        graph_service.get_recent_teams_chats = AsyncMock(return_value={"value": []})
+        graph_service.get_unread_messages = AsyncMock(return_value={"value": []})
+        graph_service.get_calendar_range = AsyncMock(
+            return_value={
+                "value": [
+                    {
+                        "id": "event-today",
+                        "subject": "Today Sync",
+                        "start": {"dateTime": today.isoformat(), "timeZone": "UTC"},
+                    },
+                    {
+                        "id": "event-tomorrow",
+                        "subject": "Tomorrow Review",
+                        "start": {"dateTime": tomorrow.isoformat(), "timeZone": "UTC"},
+                    },
+                ]
+            }
+        )
+
+        with (
+            patch("app.api.command_center.MicrosoftConnectionService", return_value=microsoft_connection),
+            patch("app.api.command_center.call_tool", new=AsyncMock(return_value={"result": {"ok": True}})),
+            patch("app.api.command_center.ApprovalService") as approval_service_class,
+            patch("app.api.command_center.MicrosoftGraphService", return_value=graph_service),
+        ):
+            approval_service_class.return_value.list_pending.return_value = {"items": []}
+            response = await feed(user_id="user-1", workspace_id=None, timezone="UTC")
+
+        self.assertEqual(response["counts"]["upcomingMeetings"], 2)
+        self.assertEqual(response["counts"]["meetingsToday"], 1)
+        self.assertEqual(len([item for item in response["items"] if item["type"] == "calendar"]), 2)
 
     async def test_auth_required_tool_response_is_microsoft_auth_error(self) -> None:
         with patch("app.api.command_center.call_tool", new=AsyncMock(return_value={

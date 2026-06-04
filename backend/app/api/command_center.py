@@ -4,6 +4,7 @@ import asyncio
 import re
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Query
 
@@ -14,17 +15,22 @@ from app.services.microsoft_connection_service import MicrosoftConnectionService
 from app.services.microsoft_graph_service import MicrosoftGraphService
 
 router = APIRouter(prefix="/api/command-center", tags=["command-center"])
+DEFAULT_TIMEZONE = "Asia/Kolkata"
+TIMEZONE_ALIASES = {"Asia/Calcutta": "Asia/Kolkata"}
 
 
 @router.get("/feed")
 async def feed(
-    user_id: str = Query(...), workspace_id: str | None = None
+    user_id: str = Query(...),
+    workspace_id: str | None = None,
+    timezone: str = Query(DEFAULT_TIMEZONE),
 ) -> dict[str, Any]:
     mailbox_email: str | None = None
     source_errors: dict[str, str] = {}
     items: list[dict[str, Any]] = []
     health = {"backend": "ok", "mcp": "ok", "microsoft": "connected"}
     status_counts: dict[str, int] = {}
+    dashboard_timezone = _normalize_timezone(timezone)
 
     microsoft_status = MicrosoftConnectionService().get_status(user_id=user_id)
     if not microsoft_status.get("connected"):
@@ -47,7 +53,11 @@ async def feed(
         _safe_tool(
             "calendar",
             "calendar_get_today_agenda",
-            {"user_id": user_id, "workspace_id": workspace_id},
+            {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "timezone": dashboard_timezone,
+            },
         ),
         _safe_tool(
             "documents",
@@ -57,6 +67,11 @@ async def feed(
         _safe_approvals(user_id=user_id, workspace_id=workspace_id),
         _safe_teams(user_id=user_id, workspace_id=workspace_id),
         _safe_mail_status(user_id=user_id, workspace_id=workspace_id),
+        _safe_calendar_status(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            timezone=dashboard_timezone,
+        ),
     )
 
     for source, payload, error, error_kind in results:
@@ -74,7 +89,7 @@ async def feed(
         if source == "mail":
             items.extend(_mail_items(payload, mailbox_email=mailbox_email))
         elif source == "calendar":
-            items.extend(_calendar_items(payload))
+            items.extend(_calendar_items(payload, priority="high"))
         elif source == "documents":
             items.extend(_document_items(payload))
         elif source == "approvals":
@@ -83,7 +98,15 @@ async def feed(
             items.extend(_team_items(payload))
         elif source == "mail_status":
             status_counts["unreadEmail"] = _unread_email_count(payload)
+            items.extend(_unread_mail_items(payload, mailbox_email=mailbox_email))
+        elif source == "calendar_status":
+            status_counts["upcomingMeetings"] = _calendar_event_count(payload)
+            status_counts["meetingsToday"] = _today_calendar_count(
+                payload, timezone=dashboard_timezone
+            )
+            items.extend(_calendar_items(payload, priority="medium"))
 
+    items = _dedupe_items(items)
     if health["microsoft"] != "disconnected" and any(
         _is_microsoft_auth_error(error) for error in source_errors.values()
     ):
@@ -169,6 +192,23 @@ async def _safe_mail_status(
         return "mail_status", {}, str(exc), "status_optional"
 
 
+async def _safe_calendar_status(
+    *, user_id: str, workspace_id: str | None, timezone: str
+) -> tuple[str, dict[str, Any], str | None, str | None]:
+    try:
+        service = MicrosoftGraphService()
+        events = await service.get_calendar_range(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            days=7,
+            timezone=timezone,
+            top=50,
+        )
+        return "calendar_status", events, None, None
+    except Exception as exc:
+        return "calendar_status", {}, str(exc), "status_optional"
+
+
 def _feed_response(
     *,
     mailbox_email: str | None,
@@ -178,14 +218,19 @@ def _feed_response(
     status_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     status_counts = status_counts or {}
-    replies_needed = sum(1 for item in items if item["type"] == "email")
+    replies_needed = _reply_needed_count(items)
+    unread_email = status_counts.get("unreadEmail", _unread_item_count(items) or replies_needed)
+    calendar_count = sum(1 for item in items if item["type"] == "calendar")
+    meetings_today = status_counts.get("meetingsToday", calendar_count)
+    upcoming_meetings = status_counts.get("upcomingMeetings", calendar_count)
     return {
         "mailboxEmail": mailbox_email,
         "health": health,
         "counts": {
             "repliesNeeded": replies_needed,
-            "unreadEmail": status_counts.get("unreadEmail", replies_needed),
-            "meetingsToday": sum(1 for item in items if item["type"] == "calendar"),
+            "unreadEmail": unread_email,
+            "meetingsToday": meetings_today,
+            "upcomingMeetings": upcoming_meetings,
             "approvalsPending": sum(1 for item in items if item["type"] == "approval"),
             "filesToReview": sum(1 for item in items if item["type"] == "document"),
             "teamsMentions": sum(1 for item in items if item["type"] == "team"),
@@ -202,6 +247,58 @@ def _unread_email_count(payload: dict[str, Any]) -> int:
     if not isinstance(messages, list):
         return 0
     return sum(1 for message in messages if isinstance(message, dict) and message.get("isRead") is False)
+
+
+def _calendar_event_count(payload: dict[str, Any]) -> int:
+    return len(_raw_calendar_events(payload))
+
+
+def _today_calendar_count(payload: dict[str, Any], *, timezone: str) -> int:
+    tz = ZoneInfo(_normalize_timezone(timezone))
+    today = datetime.now(tz).date()
+    total = 0
+    for event in _raw_calendar_events(payload):
+        start = _event_start_datetime(event, timezone=timezone)
+        if start and start.astimezone(tz).date() == today:
+            total += 1
+    return total
+
+
+def _reply_needed_count(items: list[dict[str, Any]]) -> int:
+    total = 0
+    for item in items:
+        if item.get("type") != "email":
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        if metadata.get("requiresReply") is True:
+            total += 1
+            continue
+        if "requiresReply" not in metadata and item.get("primaryActionLabel") == "Draft Reply":
+            total += 1
+    return total
+
+
+def _unread_item_count(items: list[dict[str, Any]]) -> int:
+    total = 0
+    for item in items:
+        if item.get("type") != "email":
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        if metadata.get("isRead") is False:
+            total += 1
+    return total
+
+
+def _dedupe_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        item_id = str(item.get("id") or "")
+        if not item_id or item_id in seen:
+            continue
+        seen.add(item_id)
+        deduped.append(item)
+    return deduped
 
 
 def _ai_suggestion_count(items: list[dict[str, Any]]) -> int:
@@ -225,12 +322,15 @@ def _top_insight(items: list[dict[str, Any]]) -> dict[str, str]:
 
 def _insight_description(items: list[dict[str, Any]]) -> str:
     parts: list[str] = []
-    email_count = sum(1 for item in items if item["type"] == "email")
+    email_count = _reply_needed_count(items)
+    unread_count = _unread_item_count(items)
     approval_count = sum(1 for item in items if item["type"] == "approval")
     document_count = sum(1 for item in items if item["type"] == "document")
     team_count = sum(1 for item in items if item["type"] == "team")
     if email_count:
         parts.append(f"{email_count} email{'s' if email_count != 1 else ''} may need a reply")
+    elif unread_count:
+        parts.append(f"{unread_count} unread email{'s' if unread_count != 1 else ''} are waiting")
     if approval_count:
         parts.append(f"{approval_count} approval{'s' if approval_count != 1 else ''} are pending")
     if document_count:
@@ -370,16 +470,71 @@ def _mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str
                         "webLink": item.get("webLink"),
                         "mailboxEmail": mailbox_email,
                         "reason": item.get("reason"),
+                        "requiresReply": True,
+                        "isRead": item.get("isRead"),
                     },
                 }
             )
     return action_items
 
 
-def _calendar_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_events = payload.get("value")
-    if not isinstance(raw_events, list):
-        raw_events = payload.get("meetings") if isinstance(payload.get("meetings"), list) else []
+def _unread_mail_items(payload: dict[str, Any], *, mailbox_email: str) -> list[dict[str, Any]]:
+    raw_messages = payload.get("value")
+    if not isinstance(raw_messages, list):
+        return []
+
+    items: list[dict[str, Any]] = []
+    for message in raw_messages:
+        if not isinstance(message, dict):
+            continue
+        message_id = str(message.get("id") or "")
+        if not message_id:
+            continue
+        if message.get("isRead") is not False:
+            continue
+
+        subject = str(message.get("subject") or "(No subject)")
+        sender_name = _email_name(message.get("from")) or _email_address(message.get("from"))
+        sender_email = _email_address(message.get("from"))
+        received_at = message.get("receivedDateTime")
+        body_preview = str(message.get("bodyPreview") or "")
+        importance = str(message.get("importance") or "").lower()
+        items.append(
+            {
+                "id": f"mail_{message_id}",
+                "type": "email",
+                "title": subject,
+                "description": body_preview,
+                "source": "Outlook",
+                "person": sender_name or sender_email,
+                "timeLabel": _date_label(received_at),
+                "priority": "high" if importance == "high" else "medium",
+                "status": "new",
+                "primaryActionLabel": "Review Email",
+                "metadata": {
+                    "messageId": message_id,
+                    "conversationId": message.get("conversationId"),
+                    "subject": subject,
+                    "from": sender_email,
+                    "senderAddress": sender_email,
+                    "replyTo": _recipient_addresses(message.get("replyTo")),
+                    "to": _recipient_addresses(message.get("toRecipients")),
+                    "receivedDateTime": received_at,
+                    "bodyPreview": body_preview,
+                    "body": _message_body(message.get("body")),
+                    "webLink": message.get("webLink"),
+                    "mailboxEmail": mailbox_email,
+                    "importance": message.get("importance"),
+                    "isRead": message.get("isRead"),
+                    "requiresReply": False,
+                },
+            }
+        )
+    return items
+
+
+def _calendar_items(payload: dict[str, Any], *, priority: str = "high") -> list[dict[str, Any]]:
+    raw_events = _raw_calendar_events(payload)
     items: list[dict[str, Any]] = []
     for event in raw_events:
         if not isinstance(event, dict):
@@ -388,16 +543,17 @@ def _calendar_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
         subject = str(event.get("subject") or event.get("title") or "(Untitled event)")
         start = _date_value(event.get("start"))
         organizer = event.get("organizer")
+        fallback_id = f"{subject}_{start or ''}".strip("_")
         items.append(
             {
-                "id": f"cal_{event_id or subject}",
+                "id": f"cal_{event_id or fallback_id}",
                 "type": "calendar",
                 "title": subject,
                 "description": _location_label(event.get("location")),
                 "source": "Calendar",
                 "person": _organizer_label(organizer),
                 "timeLabel": _time_label(start),
-                "priority": "high",
+                "priority": _priority(priority),
                 "status": "pending",
                 "primaryActionLabel": "Prepare",
                 "metadata": event,
@@ -504,10 +660,15 @@ def _date_value(value: Any) -> Any:
 def _parse_date(value: Any) -> datetime | None:
     if not value:
         return None
+    text = str(value).replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return datetime.fromisoformat(text)
     except ValueError:
-        return None
+        normalized = re.sub(r"(\.\d{6})\d+", r"\1", text)
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
 
 
 def _location_label(value: Any) -> str:
@@ -521,3 +682,60 @@ def _organizer_label(value: Any) -> str | None:
         email = value.get("emailAddress") if isinstance(value.get("emailAddress"), dict) else {}
         return email.get("name") or email.get("address")
     return str(value) if value else None
+
+
+def _raw_calendar_events(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_events = payload.get("value")
+    if not isinstance(raw_events, list):
+        raw_events = payload.get("meetings") if isinstance(payload.get("meetings"), list) else []
+    return [event for event in raw_events if isinstance(event, dict)]
+
+
+def _event_start_datetime(event: dict[str, Any], *, timezone: str) -> datetime | None:
+    start_payload = event.get("start")
+    start_value = _date_value(start_payload)
+    parsed = _parse_date(start_value)
+    if not parsed:
+        return None
+    tz_name = timezone
+    if isinstance(start_payload, dict) and start_payload.get("timeZone"):
+        tz_name = str(start_payload.get("timeZone"))
+    tz = ZoneInfo(_normalize_timezone(tz_name))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=tz)
+    return parsed.astimezone(tz)
+
+
+def _email_name(value: Any) -> str:
+    if isinstance(value, dict):
+        email = value.get("emailAddress") if isinstance(value.get("emailAddress"), dict) else {}
+        return str(email.get("name") or value.get("name") or "")
+    return ""
+
+
+def _email_address(value: Any) -> str:
+    if isinstance(value, dict):
+        email = value.get("emailAddress") if isinstance(value.get("emailAddress"), dict) else {}
+        return str(email.get("address") or value.get("address") or value.get("email") or "")
+    return ""
+
+
+def _recipient_addresses(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [address for address in (_email_address(item) for item in value) if address]
+
+
+def _message_body(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("content") or "")
+    return str(value or "")
+
+
+def _normalize_timezone(value: str | None) -> str:
+    candidate = TIMEZONE_ALIASES.get(str(value or ""), str(value or DEFAULT_TIMEZONE))
+    try:
+        ZoneInfo(candidate)
+        return candidate
+    except ZoneInfoNotFoundError:
+        return DEFAULT_TIMEZONE
